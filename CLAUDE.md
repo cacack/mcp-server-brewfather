@@ -35,3 +35,4 @@ Tools must call `client.get_client()` through the module (not `from .client impo
 - Acceptance tests must stay read-only. Detail fields added to `normalize.py` should be verified there against live objects.
 - Adding/changing a tool: update the README tool table and the `server.py` module docstring.
 - Commits use conventional format; PR titles must **not** (CI enforces).
+- Releases: release-please (`release-please.yml`, GitHub App token) opens the release PR and syncs `uv.lock` on it; the `v*` tag it creates triggers `release.yml`, which publishes to PyPI via trusted publishing. Never bump versions or tag by hand.

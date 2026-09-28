@@ -40,18 +40,15 @@ In Brewfather: **Settings → API → Generate API Key**. Pick scopes to match w
 want the server to do (see [Security posture](#security-posture)). Note the
 **User ID** shown alongside the key.
 
-### 2. Configure credentials
+### 2. Install
+
+Requires Python **3.12+**. With [uv](https://docs.astral.sh/uv/), there is nothing
+to install: `uvx` fetches and runs the published package. Otherwise:
 
 ```bash
-cp .env.example .env
-# edit .env with your user id / API key, then:
-source .env
-```
-
-### 3. Install
-
-```bash
-uv sync          # or: pip install -e .
+pip install mcp-server-brewfather
+# or, isolated:
+pipx install mcp-server-brewfather
 ```
 
 ## Register with Claude
@@ -61,7 +58,7 @@ Claude Code:
 ```bash
 claude mcp add brewfather --scope user \
   -e BREWFATHER_USER_ID=your_user_id -e BREWFATHER_API_KEY=your_api_key \
-  -- uv --directory /path/to/mcp-server-brewfather run mcp-server-brewfather
+  -- uvx mcp-server-brewfather
 ```
 
 Claude Desktop (`claude_desktop_config.json`):
@@ -70,8 +67,8 @@ Claude Desktop (`claude_desktop_config.json`):
 {
   "mcpServers": {
     "brewfather": {
-      "command": "uv",
-      "args": ["--directory", "/path/to/mcp-server-brewfather", "run", "mcp-server-brewfather"],
+      "command": "uvx",
+      "args": ["mcp-server-brewfather"],
       "env": {
         "BREWFATHER_USER_ID": "your_user_id",
         "BREWFATHER_API_KEY": "your_api_key"
@@ -102,6 +99,8 @@ surfaces as an error naming the `Retry-After` delay.
 ## Development
 
 ```bash
+cp .env.example .env             # then fill in your user id / API key
+source .env
 uv sync                          # install deps (incl. dev group)
 uv run ruff check .              # lint
 uv run ruff format .             # format
@@ -113,6 +112,10 @@ CI (GitHub Actions) runs the PR-title check, ruff lint/format, and the unit test
 on every PR; the `CI Success` job is the aggregate gate. Acceptance tests are not
 run in CI — they need live credentials and stay local/manual. They are read-only
 and never modify your brewing data.
+
+Releases are automated: release-please keeps a release PR open from the
+conventional commits on `main`, and merging it tags `vX.Y.Z`, which triggers
+`release.yml` to publish to PyPI via trusted publishing.
 
 ## License
 
