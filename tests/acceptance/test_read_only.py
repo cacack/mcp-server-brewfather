@@ -36,6 +36,7 @@ def test_batches_roundtrip():
     batch = server.get_batch(batches[0]["id"])
     assert batch["id"] == batches[0]["id"]
     assert "recipe" in batch
+    assert "estimated" in batch, f"no estimated stats in projected batch: {sorted(batch)}"
     readings = server.get_readings(batch["id"], limit=5)
     assert readings["total"] >= len(readings["readings"])
 

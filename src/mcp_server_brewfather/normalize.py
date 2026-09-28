@@ -6,8 +6,8 @@ so we don't blow up the model's context. Epoch-millisecond timestamps become ISO
 strings. Missing fields are omitted rather than returned as null.
 
 List-endpoint default fields are documented by Brewfather; the richer detail
-fields below (og, measured*, ingredient amounts, …) follow the objects the
-Brewfather app exports, and are checked by the acceptance suite.
+fields below (og, estimated*, measured*, ingredient amounts, …) were confirmed
+against live API objects and are checked by the acceptance suite.
 """
 
 from __future__ import annotations
@@ -17,9 +17,11 @@ from datetime import UTC, datetime
 INVENTORY_KINDS = ("fermentables", "hops", "miscs", "yeasts")
 
 _RECIPE_STATS = ("batchSize", "boilTime", "efficiency", "og", "fg", "abv", "ibu", "color")
+_BATCH_ESTIMATES = ("estimatedOg", "estimatedFg", "estimatedIbu", "estimatedColor")
 _INGREDIENT_FIELDS = (
     "name",
     "amount",
+    "percentage",
     "unit",
     "type",
     "use",
@@ -78,11 +80,21 @@ def compact_batch_summary(b: dict) -> dict:
 
 
 def compact_batch(b: dict) -> dict:
-    """Batch summary plus every ``measured*`` value and the embedded recipe, compacted."""
+    """Batch summary, dates, estimated and measured values, and the embedded recipe."""
     out = compact_batch_summary(b)
     if b.get("fermentationStartDate") is not None:
         out["fermentation_start"] = iso_date(b["fermentationStartDate"])
-    measured = {k: v for k, v in b.items() if k.startswith("measured") and v is not None}
+    if b.get("bottlingDate") is not None:
+        out["bottling_date"] = iso_date(b["bottlingDate"])
+    estimated = pick(b, _BATCH_ESTIMATES)
+    if estimated:
+        out["estimated"] = estimated
+    # Skip boolean flags such as measuredOgSet; keep only the measured values.
+    measured = {
+        k: v
+        for k, v in b.items()
+        if k.startswith("measured") and v is not None and not isinstance(v, bool)
+    }
     if measured:
         out["measured"] = measured
     if b.get("recipe"):

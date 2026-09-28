@@ -62,12 +62,21 @@ def test_get_batch_projects_measured_and_recipe(fake_api):
     fake_api(
         {
             ("GET", "batches/b1"): _batch(
-                "b1", "Hazy IPA", measuredOg=1.066, measuredFg=None, recipe=recipe
+                "b1",
+                "Hazy IPA",
+                measuredOg=1.066,
+                measuredOgSet=True,
+                measuredFg=None,
+                estimatedOg=1.065,
+                bottlingDate=_SEP1,
+                recipe=recipe,
             )
         }
     )
     out = server.get_batch("b1")
     assert out["measured"] == {"measuredOg": 1.066}
+    assert out["estimated"] == {"estimatedOg": 1.065}
+    assert out["bottling_date"] == "2026-09-01"
     assert out["recipe"]["og"] == 1.065
     assert out["recipe"]["style"] == "Hazy IPA"
     assert out["recipe"]["hops"] == [{"name": "Citra", "amount": 100, "use": "Dry Hop", "time": 3}]

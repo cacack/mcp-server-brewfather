@@ -71,8 +71,9 @@ def find_batches(name: str = "", status: str = "") -> list[dict]:
 
 @mcp.tool()
 def get_batch(batch_id: str) -> dict:
-    """Read one batch: summary, fermentation start, all measured values, and the
-    embedded recipe (target stats + ingredient bill). Units are metric (SG, L, °C).
+    """Read one batch: summary, fermentation/bottling dates, estimated targets
+    (OG, FG, IBU, color), all measured values, and the embedded recipe (target
+    stats + ingredient bill). Units are metric (SG, L, °C).
     """
     return compact_batch(client.get_client().get(f"batches/{batch_id}"))
 
