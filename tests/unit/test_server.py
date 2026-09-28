@@ -166,3 +166,69 @@ def test_set_inventory_requires_exactly_one(fake_api, kwargs):
     with pytest.raises(ValueError, match="exactly one"):
         server.set_inventory("hops", "h1", **kwargs)
     assert api.requests == []
+
+
+def _recipe():
+    return {
+        "_id": "r1",
+        "name": "Pale",
+        "og": 1.050,
+        "hops": [
+            {"name": "Magnum", "amount": 20, "time": 60, "_rev": "x"},
+            {"name": "Cascade", "amount": 30, "time": 10, "_rev": "y"},
+        ],
+        "fermentables": [{"name": "Pale Malt", "amount": 4.0, "potential": 1.037}],
+    }
+
+
+def test_update_recipe_fields_only_skips_read(fake_api):
+    api = fake_api({("PATCH", "recipes/r1"): "Updated"})
+    out = server.update_recipe("r1", fields={"batchSize": 23, "name": "Pale v2"})
+    assert out["result"] == "Updated"
+    assert "recalculates" in out["note"]
+    assert api.bodies() == [{"batchSize": 23, "name": "Pale v2"}]
+    assert [r.method for r in api.requests] == ["PATCH"]
+
+
+def test_update_recipe_sends_full_ingredient_lists(fake_api):
+    api = fake_api({("GET", "recipes/r1"): _recipe(), ("PATCH", "recipes/r1"): "Updated"})
+    server.update_recipe(
+        "r1",
+        ingredients=[
+            {"kind": "hops", "index": 1, "current_name": "cascade", "amount": 50},
+            {"kind": "hops", "index": 0, "remove": True},
+            {"kind": "hops", "name": "Citra", "amount": 25, "time": 5},
+        ],
+    )
+    # Untouched kinds are left out; touched lists keep fields get_recipe hides.
+    assert api.bodies() == [
+        {
+            "hops": [
+                {"name": "Cascade", "amount": 50, "time": 10, "_rev": "y"},
+                {"name": "Citra", "amount": 25, "time": 5},
+            ]
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({}, "nothing to update"),
+        ({"fields": {"og": 1.08}}, "unknown recipe field"),
+        ({"ingredients": [{"kind": "grains", "index": 0}]}, "unknown inventory kind"),
+        ({"ingredients": [{"kind": "hops", "index": 0, "ibu": 5}]}, "unknown ingredient field"),
+        ({"ingredients": [{"kind": "hops", "index": 2, "amount": 1}]}, "out of range"),
+        ({"ingredients": [{"kind": "hops", "name": "Citra"}]}, "needs name and amount"),
+        ({"ingredients": [{"kind": "hops", "remove": True}]}, "removing needs index"),
+        (
+            {"ingredients": [{"kind": "hops", "index": 0, "current_name": "Cascade", "time": 5}]},
+            "is 'Magnum', not 'Cascade'",
+        ),
+    ],
+)
+def test_update_recipe_validates_before_writing(fake_api, kwargs, match):
+    api = fake_api({("GET", "recipes/r1"): _recipe()})
+    with pytest.raises(ValueError, match=match):
+        server.update_recipe("r1", **kwargs)
+    assert api.bodies() == []

@@ -26,7 +26,9 @@ Tools must call `client.get_client()` through the module (not `from .client impo
 
 ## Constraints
 
-- No tool may call a delete endpoint; recipes stay read-only. The API key's scopes are the trust boundary.
+- No tool may call a delete endpoint. The API key's scopes are the trust boundary.
+- The API accepts any field silently and never computes recipe stats (the app does). Writes go through field allowlists in `server.py`; never make stats writable.
+- Recipe ingredient lists are replaced wholesale on PATCH — send full raw items, never the compact projection.
 - Keep dependencies to `mcp` and `httpx`. `mcp` is capped `<2` because v2 removed `mcp.server.fastmcp`.
 - API is metric-only (SG, L, kg/g, °C).
 - Acceptance tests must stay read-only. Detail fields added to `normalize.py` should be verified there against live objects.

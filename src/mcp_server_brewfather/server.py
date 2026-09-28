@@ -1,9 +1,9 @@
 """FastMCP server exposing Brewfather batches, recipes, readings, and inventory.
 
-Eight tools: find_batches, get_batch, get_readings, update_batch, find_recipes,
-get_recipe, list_inventory, set_inventory. Reads cover everything the v2 API
-exposes; writes are limited to batch status/measurements and inventory stock.
-Nothing here deletes, and recipes are read-only.
+Nine tools: find_batches, get_batch, get_readings, update_batch, find_recipes,
+get_recipe, update_recipe, list_inventory, set_inventory. Writes are limited to
+batch status/measurements, recipe settings/ingredients, and inventory stock.
+Nothing here deletes or writes computed recipe stats.
 """
 
 from __future__ import annotations
@@ -42,6 +42,35 @@ BATCH_MEASUREMENTS = (
     "carbonationTemp",
 )
 
+# Recipe settings update_recipe may write. Stats (og, fg, abv, ibu, color, …) are
+# deliberately absent: the Brewfather app computes them from the ingredients, and
+# the API stores whatever it is sent without checking.
+RECIPE_FIELDS = ("name", "author", "notes", "batchSize", "boilSize", "boilTime", "efficiency")
+
+# Ingredient fields update_recipe may set. The API silently accepts unknown keys,
+# so this allowlist is the only guard.
+INGREDIENT_FIELDS = (
+    "name",
+    "amount",
+    "unit",
+    "type",
+    "use",
+    "time",
+    "alpha",
+    "color",
+    "potential",
+    "attenuation",
+    "form",
+    "laboratory",
+    "origin",
+    "supplier",
+)
+
+_STALE_STATS = (
+    "Brewfather recalculates og/fg/abv/ibu/color when the recipe is opened in the app; "
+    "the stored stats get_recipe returns are not updated by this edit."
+)
+
 
 def _matches(obj: dict, needle: str) -> bool:
     return not needle or needle in (obj.get("name") or "").lower()
@@ -50,6 +79,54 @@ def _matches(obj: dict, needle: str) -> bool:
 def _check_kind(kind: str) -> None:
     if kind not in INVENTORY_KINDS:
         raise ValueError(f"unknown inventory kind: {kind!r} (use {', '.join(INVENTORY_KINDS)})")
+
+
+def _check_fields(obj: dict, allowed: tuple[str, ...], what: str) -> None:
+    for key in obj:
+        if key not in allowed:
+            raise ValueError(f"unknown {what}: {key!r} (use {', '.join(allowed)})")
+
+
+def _apply_ingredient_changes(recipe: dict, changes: list[dict]) -> dict[str, list[dict]]:
+    """Return the full new ingredient list for each kind that ``changes`` touches.
+
+    The API replaces an ingredient list wholesale, so edits are applied to the raw
+    items (keeping fields get_recipe doesn't show) and the complete list is sent.
+    Indexes refer to the recipe as read; removals are applied last.
+    """
+    lists: dict[str, list[dict]] = {}
+    removed: dict[str, set[int]] = {}
+    for change in changes:
+        change = dict(change)
+        kind = change.pop("kind", "")
+        index = change.pop("index", None)
+        remove = change.pop("remove", False)
+        current_name = change.pop("current_name", None)
+        _check_kind(kind)
+        _check_fields(change, INGREDIENT_FIELDS, "ingredient field")
+        original = recipe.get(kind) or []
+        items = lists.setdefault(kind, [dict(i) for i in original])
+        if index is None:
+            if remove or "name" not in change or "amount" not in change:
+                raise ValueError("a new ingredient needs name and amount (removing needs index)")
+            items.append(change)
+        elif not 0 <= index < len(original):
+            raise ValueError(f"{kind} index {index} out of range (recipe has {len(original)})")
+        elif current_name is not None and (
+            current_name.strip().lower() != (original[index].get("name") or "").lower()
+        ):
+            raise ValueError(
+                f"{kind} index {index} is {original[index].get('name')!r}, not {current_name!r};"
+                " re-read the recipe with get_recipe"
+            )
+        elif remove:
+            removed.setdefault(kind, set()).add(index)
+        else:
+            items[index].update(change)
+    return {
+        kind: [item for n, item in enumerate(items) if n not in removed.get(kind, set())]
+        for kind, items in lists.items()
+    }
 
 
 @mcp.tool()
@@ -136,8 +213,49 @@ def find_recipes(name: str = "") -> list[dict]:
 def get_recipe(recipe_id: str) -> dict:
     """Read one recipe: summary, target stats (batchSize, og, fg, abv, ibu, color, …)
     and ingredient bill (fermentables, hops, miscs, yeasts). Units are metric.
+    Stats are as last saved in the Brewfather app, so they can be stale after
+    update_recipe.
     """
     return compact_recipe(client.get_client().get(f"recipes/{recipe_id}"))
+
+
+@mcp.tool()
+def update_recipe(
+    recipe_id: str,
+    fields: dict[str, str | float] | None = None,
+    ingredients: list[dict] | None = None,
+) -> dict:
+    """Edit a recipe's settings and/or ingredient bill.
+
+    ``fields`` keys (metric — liters, minutes, percent): name, author, notes,
+    batchSize, boilSize, boilTime, efficiency. Stats (og, fg, abv, ibu, color)
+    can't be set; Brewfather computes them from the ingredients.
+
+    ``ingredients`` is a list of changes, each with ``kind`` (fermentables, hops,
+    miscs, yeasts) and:
+    - ``index`` + fields to change an item — index is its 0-based position in
+      get_recipe's list, e.g. {"kind": "hops", "index": 1, "amount": 50};
+    - ``index`` + ``"remove": true`` to delete it;
+    - with ``index``, pass ``current_name`` (the item's name as get_recipe showed
+      it) and the change is rejected if the item there has a different name;
+    - no index to add one; needs name and amount, e.g. {"kind": "hops",
+      "name": "Citra", "amount": 30, "alpha": 12, "use": "Boil", "time": 5}.
+    Ingredient fields: name, amount (kg for fermentables, g for hops), unit,
+    type, use, time, alpha, color, potential, attenuation, form, laboratory,
+    origin, supplier.
+
+    Returns {recipe_id, result, note}.
+    """
+    fields = fields or {}
+    _check_fields(fields, RECIPE_FIELDS, "recipe field")
+    if not fields and not ingredients:
+        raise ValueError("nothing to update: pass fields and/or ingredients")
+    body: dict = dict(fields)
+    if ingredients:
+        current = client.get_client().get(f"recipes/{recipe_id}")
+        body.update(_apply_ingredient_changes(current, ingredients))
+    result = client.get_client().patch(f"recipes/{recipe_id}", body)
+    return {"recipe_id": recipe_id, "result": result, "note": _STALE_STATS}
 
 
 @mcp.tool()
