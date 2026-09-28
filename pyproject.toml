@@ -7,9 +7,8 @@ requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Chris Clonch", email = "chris@theclonchs.com" }]
 dependencies = [
-    # mcp 2.x renamed FastMCP to MCPServer and removed mcp.server.fastmcp,
-    # which server.py imports. Capped until the v2 migration lands.
-    "mcp[cli]>=1.2.0,<2",
+    # 2.x: MCPServer, and only ToolError messages reach the model (server.py).
+    "mcp[cli]>=2.2,<3",
     # Already a transitive dependency of mcp; declared because client.py uses it directly.
     "httpx>=0.28",
 ]

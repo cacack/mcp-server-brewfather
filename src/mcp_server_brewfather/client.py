@@ -13,6 +13,7 @@ import os
 from typing import Any
 
 import httpx
+from mcp.server.mcpserver.exceptions import ToolError
 
 BASE_URL = "https://api.brewfather.app/v2/"
 PAGE_SIZE = 50  # API max for list endpoints.
@@ -20,8 +21,11 @@ PAGE_SIZE = 50  # API max for list endpoints.
 _client: BrewfatherClient | None = None
 
 
-class BrewfatherError(RuntimeError):
-    """An API call failed; the message is meant to be read by the model."""
+class BrewfatherError(ToolError):
+    """An API call failed; the message is meant to be read by the model.
+
+    A ToolError so mcp passes the message through instead of a generic error.
+    """
 
 
 class BrewfatherClient:
@@ -50,7 +54,10 @@ class BrewfatherClient:
             params["start_after"] = page[-1]["_id"]
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
-        resp = self._http.request(method, path, **kwargs)
+        try:
+            resp = self._http.request(method, path, **kwargs)
+        except httpx.HTTPError as e:
+            raise BrewfatherError(f"{method} {path} failed: {type(e).__name__}: {e}") from e
         if resp.status_code == 429:
             retry = resp.headers.get("Retry-After", "?")
             raise BrewfatherError(

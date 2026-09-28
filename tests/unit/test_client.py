@@ -60,3 +60,12 @@ def test_get_client_requires_env(monkeypatch):
     monkeypatch.delenv("BREWFATHER_API_KEY", raising=False)
     with pytest.raises(client.BrewfatherError, match="must be set"):
         client.get_client()
+
+
+def test_transport_error_becomes_brewfather_error(monkeypatch):
+    def fail(request):
+        raise httpx.ConnectTimeout("timed out", request=request)
+
+    bf = client.BrewfatherClient("uid", "key", transport=httpx.MockTransport(fail))
+    with pytest.raises(client.BrewfatherError, match="GET recipes failed: ConnectTimeout"):
+        bf.get("recipes")

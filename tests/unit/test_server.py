@@ -6,7 +6,10 @@ objects, reading order/limit, and input validation before any write is sent.
 
 from __future__ import annotations
 
+import anyio
+import httpx
 import pytest
+from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server_brewfather import server
 
@@ -46,7 +49,7 @@ def test_find_batches_filters_by_name_and_passes_status(fake_api):
 
 def test_find_batches_rejects_unknown_status(fake_api):
     api = fake_api({})
-    with pytest.raises(ValueError, match="unknown status"):
+    with pytest.raises(ToolError, match="unknown status"):
         server.find_batches(status="Drinking")
     assert api.requests == []
 
@@ -109,7 +112,7 @@ def test_update_batch_sends_status_and_measurements(fake_api):
 )
 def test_update_batch_validates_before_sending(fake_api, kwargs, match):
     api = fake_api({})
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(ToolError, match=match):
         server.update_batch("b1", **kwargs)
     assert api.requests == []
 
@@ -144,7 +147,7 @@ def test_list_inventory_in_stock_filter(fake_api):
 
 
 def test_list_inventory_rejects_unknown_kind(fake_api):
-    with pytest.raises(ValueError, match="unknown inventory kind"):
+    with pytest.raises(ToolError, match="unknown inventory kind"):
         server.list_inventory("grains")
 
 
@@ -163,7 +166,7 @@ def test_set_inventory_absolute(fake_api):
 @pytest.mark.parametrize("kwargs", [{}, {"amount": 1, "adjust": 1}])
 def test_set_inventory_requires_exactly_one(fake_api, kwargs):
     api = fake_api({})
-    with pytest.raises(ValueError, match="exactly one"):
+    with pytest.raises(ToolError, match="exactly one"):
         server.set_inventory("hops", "h1", **kwargs)
     assert api.requests == []
 
@@ -229,6 +232,24 @@ def test_update_recipe_sends_full_ingredient_lists(fake_api):
 )
 def test_update_recipe_validates_before_writing(fake_api, kwargs, match):
     api = fake_api({("GET", "recipes/r1"): _recipe()})
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(ToolError, match=match):
         server.update_recipe("r1", **kwargs)
     assert api.bodies() == []
+
+
+def test_error_message_reaches_the_client(fake_api):
+    # mcp 2 replaces the message of anything but a ToolError with a generic one.
+    from mcp.client import Client
+
+    fake_api({("GET", "recipes/r1"): httpx.Response(403, text="Forbidden")})
+
+    async def call():
+        async with Client(server.mcp) as c:
+            return [
+                await c.call_tool("find_batches", {"status": "Drinking"}),
+                await c.call_tool("get_recipe", {"recipe_id": "r1"}),
+            ]
+
+    bad_input, api_error = anyio.run(call)
+    assert bad_input.is_error and "unknown status: 'Drinking'" in bad_input.content[0].text
+    assert api_error.is_error and "HTTP 403" in api_error.content[0].text
