@@ -188,7 +188,7 @@ def test_update_recipe_fields_only_skips_read(fake_api):
     api = fake_api({("PATCH", "recipes/r1"): "Updated"})
     out = server.update_recipe("r1", fields={"batchSize": 23, "name": "Pale v2"})
     assert out["result"] == "Updated"
-    assert "recalculates" in out["note"]
+    assert "not updated by API writes" in out["note"]
     assert api.bodies() == [{"batchSize": 23, "name": "Pale v2"}]
     assert [r.method for r in api.requests] == ["PATCH"]
 
@@ -253,3 +253,49 @@ def test_error_message_reaches_the_client(fake_api):
     bad_input, api_error = anyio.run(call)
     assert bad_input.is_error and "unknown status: 'Drinking'" in bad_input.content[0].text
     assert api_error.is_error and "HTTP 403" in api_error.content[0].text
+
+
+def test_create_recipe_posts_settings_and_ingredients(fake_api):
+    api = fake_api({("POST", "recipes"): {"id": "r9"}})
+    out = server.create_recipe(
+        " Pale ",
+        type="Extract",
+        fields={"batchSize": 20},
+        ingredients=[
+            {"kind": "hops", "name": "Citra", "amount": 30, "alpha": 12},
+            {"kind": "yeasts", "name": "US-05", "amount": 1},
+        ],
+    )
+    assert out["recipe_id"] == "r9"
+    assert api.bodies("POST") == [
+        {
+            "batchSize": 20,
+            "name": "Pale",
+            "type": "Extract",
+            "hops": [{"name": "Citra", "amount": 30, "alpha": 12}],
+            "yeasts": [{"name": "US-05", "amount": 1}],
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"name": "  "}, "needs a name"),
+        ({"name": "Pale", "type": "BIAB"}, "unknown recipe type"),
+        ({"name": "Pale", "fields": {"ibu": 40}}, "unknown recipe field"),
+        (
+            {"name": "Pale", "ingredients": [{"kind": "hops", "index": 0, "amount": 5}]},
+            "out of range",
+        ),
+        (
+            {"name": "Pale", "ingredients": [{"kind": "hops", "name": "Citra"}]},
+            "needs name and amount",
+        ),
+    ],
+)
+def test_create_recipe_validates_before_posting(fake_api, kwargs, match):
+    api = fake_api({})
+    with pytest.raises(ToolError, match=match):
+        server.create_recipe(**kwargs)
+    assert api.requests == []
