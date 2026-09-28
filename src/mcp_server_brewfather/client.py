@@ -25,7 +25,12 @@ class BrewfatherError(ToolError):
     """An API call failed; the message is meant to be read by the model.
 
     A ToolError so mcp passes the message through instead of a generic error.
+    ``status`` is the HTTP status code when the API answered with an error.
     """
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class BrewfatherClient:
@@ -64,11 +69,12 @@ class BrewfatherClient:
         if resp.status_code == 429:
             retry = resp.headers.get("Retry-After", "?")
             raise BrewfatherError(
-                f"rate limited (500 calls/hour per API key); retry after {retry}s"
+                f"rate limited (500 calls/hour per API key); retry after {retry}s", 429
             )
         if resp.is_error:
             raise BrewfatherError(
-                f"{method} {path} failed: HTTP {resp.status_code} {resp.text[:200]}"
+                f"{method} {path} failed: HTTP {resp.status_code} {resp.text[:200]}",
+                resp.status_code,
             )
         try:
             return resp.json()
