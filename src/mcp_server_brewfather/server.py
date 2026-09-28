@@ -169,8 +169,14 @@ def get_readings(batch_id: str, limit: int = 20) -> dict:
 
     Returns {total, readings: [{time, sg, temp, ...}]} with only the most recent
     ``limit`` readings (0 = all — can be thousands over a fermentation).
+    ``total`` counts every reading the batch has, except with ``limit=1``: that
+    fetches only the latest reading, so ``total`` is 1 (or 0 when there are none).
     Temperatures are °C.
     """
+    if limit == 1:
+        last = client.get_client().get(f"batches/{batch_id}/readings/last")
+        readings = [compact_reading(last)] if isinstance(last, dict) and last else []
+        return {"total": len(readings), "readings": readings}
     raw = client.get_client().get(f"batches/{batch_id}/readings")
     readings = sorted(raw, key=lambda r: r.get("time") or 0)
     if limit > 0:

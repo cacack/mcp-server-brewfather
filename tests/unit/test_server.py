@@ -95,6 +95,22 @@ def test_get_readings_sorts_and_limits(fake_api):
     assert out["readings"][-1]["time"] == "2026-09-01T12:00:02+00:00"
 
 
+def test_get_readings_limit_one_fetches_only_last(fake_api):
+    api = fake_api({("GET", "batches/b1/readings/last"): {"time": _SEP1, "sg": 1012, "temp": 18}})
+    out = server.get_readings("b1", limit=1)
+    assert [r.url.path for r in api.requests] == ["/v2/batches/b1/readings/last"]
+    assert out == {
+        "total": 1,
+        "readings": [{"time": "2026-09-01T12:00:00+00:00", "sg": 1012, "temp": 18}],
+    }
+
+
+@pytest.mark.parametrize("body", [{}, "", None])
+def test_get_readings_limit_one_without_readings_is_empty(fake_api, body):
+    fake_api({("GET", "batches/b1/readings/last"): httpx.Response(200, json=body)})
+    assert server.get_readings("b1", limit=1) == {"total": 0, "readings": []}
+
+
 def test_update_batch_sends_status_and_measurements(fake_api):
     api = fake_api({("PATCH", "batches/b1"): "Updated"})
     out = server.update_batch("b1", status="Conditioning", measurements={"measuredFg": 1.012})

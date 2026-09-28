@@ -39,6 +39,8 @@ def test_batches_roundtrip():
     assert "estimated" in batch, f"no estimated stats in projected batch: {sorted(batch)}"
     readings = server.get_readings(batch["id"], limit=5)
     assert readings["total"] >= len(readings["readings"])
+    latest = server.get_readings(batch["id"], limit=1)
+    assert latest["readings"] == readings["readings"][-1:]
 
 
 @pytest.mark.parametrize("kind", INVENTORY_KINDS)
