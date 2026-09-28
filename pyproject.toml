@@ -1,17 +1,30 @@
 [project]
 name = "mcp-server-brewfather"
 version = "0.1.0"
-description = "MCP server for Brewfather: read batches, recipes, readings, and inventory; update batch status and stock"
+description = "MCP server for Brewfather: read batches, recipes, readings, and inventory; create and edit recipes; update batch status and stock"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Chris Clonch", email = "chris@theclonchs.com" }]
+keywords = ["brewfather", "homebrew", "brewing", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     # 2.x: MCPServer, and only ToolError messages reach the model (server.py).
     "mcp[cli]>=2.2,<3",
     # Already a transitive dependency of mcp; declared because client.py uses it directly.
     "httpx>=0.28",
 ]
+
+[project.urls]
+Homepage = "https://github.com/cacack/mcp-server-brewfather"
+Repository = "https://github.com/cacack/mcp-server-brewfather"
+Issues = "https://github.com/cacack/mcp-server-brewfather/issues"
 
 [project.scripts]
 mcp-server-brewfather = "mcp_server_brewfather.server:main"
