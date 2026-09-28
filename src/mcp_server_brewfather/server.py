@@ -169,14 +169,21 @@ def get_readings(batch_id: str, limit: int = 20) -> dict:
 
     Returns {total, readings: [{time, sg, temp, ...}]} with only the most recent
     ``limit`` readings (0 = all — can be thousands over a fermentation).
-    ``total`` counts every reading the batch has, except with ``limit=1``: that
-    fetches only the latest reading, so ``total`` is 1 (or 0 when there are none).
+    ``total`` counts every reading the batch has. ``limit=1`` instead fetches only
+    the reading Brewfather itself reports as latest, and omits ``total``.
     Temperatures are °C.
     """
     if limit == 1:
-        last = client.get_client().get(f"batches/{batch_id}/readings/last")
-        readings = [compact_reading(last)] if isinstance(last, dict) and last else []
-        return {"total": len(readings), "readings": readings}
+        try:
+            last = client.get_client().get(f"batches/{batch_id}/readings/last")
+        except client.BrewfatherError as e:
+            # A 404 may mean "no readings yet" or "no such batch"; the list endpoint
+            # below tells those apart.
+            if e.status != 404:
+                raise
+        else:
+            has_reading = isinstance(last, dict) and bool(last)
+            return {"readings": [compact_reading(last)] if has_reading else []}
     raw = client.get_client().get(f"batches/{batch_id}/readings")
     readings = sorted(raw, key=lambda r: r.get("time") or 0)
     if limit > 0:
