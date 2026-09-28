@@ -1,8 +1,9 @@
 """MCP server exposing Brewfather batches, recipes, readings, and inventory.
 
-Nine tools: find_batches, get_batch, get_readings, update_batch, find_recipes,
-get_recipe, update_recipe, list_inventory, set_inventory. Writes are limited to
-batch status/measurements, recipe settings/ingredients, and inventory stock.
+Ten tools: find_batches, get_batch, get_readings, update_batch, find_recipes,
+get_recipe, create_recipe, update_recipe, list_inventory, set_inventory. Writes are
+limited to batch status/measurements, recipe creation and settings/ingredients,
+and inventory stock.
 Nothing here deletes or writes computed recipe stats.
 
 Errors meant for the model are raised as ToolError: mcp 2 hides the message of any
@@ -46,12 +47,15 @@ BATCH_MEASUREMENTS = (
     "carbonationTemp",
 )
 
-# Recipe settings update_recipe may write. Stats (og, fg, abv, ibu, color, …) are
+# Recipe settings create_recipe/update_recipe may write. Stats (og, fg, abv, ibu, color, …) are
 # deliberately absent: the Brewfather app computes them from the ingredients, and
 # the API stores whatever it is sent without checking.
 RECIPE_FIELDS = ("name", "author", "notes", "batchSize", "boilSize", "boilTime", "efficiency")
 
-# Ingredient fields update_recipe may set. The API silently accepts unknown keys,
+# Recipe types seen on live recipes. The API accepts any string, even none.
+RECIPE_TYPES = ("All Grain", "Extract")
+
+# Ingredient fields create_recipe/update_recipe may set. The API silently accepts unknown keys,
 # so this allowlist is the only guard.
 INGREDIENT_FIELDS = (
     "name",
@@ -71,8 +75,8 @@ INGREDIENT_FIELDS = (
 )
 
 _STALE_STATS = (
-    "Brewfather recalculates og/fg/abv/ibu/color when the recipe is opened in the app; "
-    "the stored stats get_recipe returns are not updated by this edit."
+    "Brewfather computes og/fg/abv/ibu/color in the app when the recipe is opened; "
+    "the stored stats get_recipe returns are not updated by API writes."
 )
 
 
@@ -221,6 +225,37 @@ def get_recipe(recipe_id: str) -> dict:
     update_recipe.
     """
     return compact_recipe(client.get_client().get(f"recipes/{recipe_id}"))
+
+
+@mcp.tool()
+def create_recipe(
+    name: str,
+    type: str = "All Grain",
+    fields: dict[str, str | float] | None = None,
+    ingredients: list[dict] | None = None,
+) -> dict:
+    """Create a new recipe.
+
+    ``type`` is All Grain or Extract. ``fields`` takes the same settings as
+    update_recipe (author, notes, batchSize, boilSize, boilTime, efficiency).
+    ``ingredients`` is a list of new items in update_recipe's add form (``kind``,
+    name, amount, … — no index). So Brewfather can compute stats, give
+    fermentables color and potential (SG, e.g. 1.037), hops alpha, use and time,
+    and yeasts attenuation.
+
+    Returns {recipe_id, note}; stats stay empty until the recipe is opened in
+    the Brewfather app.
+    """
+    if not name.strip():
+        raise ToolError("a recipe needs a name")
+    if type not in RECIPE_TYPES:
+        raise ToolError(f"unknown recipe type: {type!r} (use {', '.join(RECIPE_TYPES)})")
+    fields = fields or {}
+    _check_fields(fields, RECIPE_FIELDS, "recipe field")
+    body: dict = {**fields, "name": name.strip(), "type": type}
+    body.update(_apply_ingredient_changes({}, ingredients or []))
+    result = client.get_client().post("recipes", body)
+    return {"recipe_id": result["id"], "note": _STALE_STATS}
 
 
 @mcp.tool()

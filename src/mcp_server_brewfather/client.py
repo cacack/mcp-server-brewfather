@@ -42,6 +42,9 @@ class BrewfatherClient:
     def patch(self, path: str, body: dict) -> Any:
         return self._request("PATCH", path, json=body)
 
+    def post(self, path: str, body: dict) -> Any:
+        return self._request("POST", path, json=body)
+
     def paginate(self, path: str, params: dict | None = None) -> list[dict]:
         """GET every page of a list endpoint, following ``start_after`` by ``_id``."""
         params = {**(params or {}), "limit": PAGE_SIZE}

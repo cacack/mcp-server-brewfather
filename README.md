@@ -18,6 +18,7 @@ Brewfather has no official MCP server; this wraps the public
 | `update_batch(batch_id, status?, measurements?)` | Set status and/or `measured*` values (validated before sending) |
 | `find_recipes(name?)` | Find recipes by name substring → `{id, name, author, type, style, equipment}` |
 | `get_recipe(recipe_id)` | Target stats (OG, FG, ABV, IBU, color, …) and ingredient bill |
+| `create_recipe(name, type?, fields?, ingredients?)` | New All Grain or Extract recipe with settings and an ingredient bill |
 | `update_recipe(recipe_id, fields?, ingredients?)` | Change settings (batch size, boil time, efficiency, …) and add/change/remove ingredients |
 | `list_inventory(kind, name?, in_stock_only?)` | Fermentables, hops, miscs, or yeasts in stock |
 | `set_inventory(kind, item_id, amount? \| adjust?)` | Set absolute stock, or add/subtract |
@@ -26,8 +27,9 @@ All values are metric (SG, liters, kg/g, °C) — the API accepts nothing else.
 Timestamps are returned as ISO-8601 UTC.
 
 Brewfather computes recipe stats (OG, FG, ABV, IBU, color) in the app, not the API.
-After `update_recipe`, the app shows correct stats as soon as you open the recipe,
-but `get_recipe` returns the stored values, which the API never recalculates.
+After `create_recipe` or `update_recipe`, the app shows correct stats as soon as you
+open the recipe, but `get_recipe` returns the stored values, which the API never
+calculates (a new recipe has none).
 Stats can't be written through this server.
 
 ## Setup
@@ -83,8 +85,8 @@ Claude Desktop (`claude_desktop_config.json`):
 
 - **The API key's scopes are the trust boundary.** For read-only use, grant only
   `batches.read`, `recipes.read`, `inventory.read`. Add `batches.write` /
-  `recipes.write` / `inventory.write` to enable `update_batch` / `update_recipe` /
-  `set_inventory`. **Never grant `*.delete`** — no tool uses it.
+  `recipes.write` / `inventory.write` to enable `update_batch` / `create_recipe` and
+  `update_recipe` / `set_inventory`. **Never grant `*.delete`** — no tool uses it.
 - No delete tools. Every write is checked against an allowlist of fields before
   it's sent, because the API silently accepts unknown fields.
 - **Two dependencies only** (`mcp`, `httpx` — the latter already required by `mcp`);
