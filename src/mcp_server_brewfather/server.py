@@ -1,14 +1,18 @@
-"""FastMCP server exposing Brewfather batches, recipes, readings, and inventory.
+"""MCP server exposing Brewfather batches, recipes, readings, and inventory.
 
 Nine tools: find_batches, get_batch, get_readings, update_batch, find_recipes,
 get_recipe, update_recipe, list_inventory, set_inventory. Writes are limited to
 batch status/measurements, recipe settings/ingredients, and inventory stock.
 Nothing here deletes or writes computed recipe stats.
+
+Errors meant for the model are raised as ToolError: mcp 2 hides the message of any
+other exception behind a generic "Error executing tool".
 """
 
 from __future__ import annotations
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from . import client
 from .normalize import (
@@ -21,7 +25,7 @@ from .normalize import (
     compact_recipe_summary,
 )
 
-mcp = FastMCP("brewfather")
+mcp = MCPServer("brewfather")
 
 BATCH_STATUSES = ("Planning", "Brewing", "Fermenting", "Conditioning", "Completed", "Archived")
 
@@ -78,13 +82,13 @@ def _matches(obj: dict, needle: str) -> bool:
 
 def _check_kind(kind: str) -> None:
     if kind not in INVENTORY_KINDS:
-        raise ValueError(f"unknown inventory kind: {kind!r} (use {', '.join(INVENTORY_KINDS)})")
+        raise ToolError(f"unknown inventory kind: {kind!r} (use {', '.join(INVENTORY_KINDS)})")
 
 
 def _check_fields(obj: dict, allowed: tuple[str, ...], what: str) -> None:
     for key in obj:
         if key not in allowed:
-            raise ValueError(f"unknown {what}: {key!r} (use {', '.join(allowed)})")
+            raise ToolError(f"unknown {what}: {key!r} (use {', '.join(allowed)})")
 
 
 def _apply_ingredient_changes(recipe: dict, changes: list[dict]) -> dict[str, list[dict]]:
@@ -108,14 +112,14 @@ def _apply_ingredient_changes(recipe: dict, changes: list[dict]) -> dict[str, li
         items = lists.setdefault(kind, [dict(i) for i in original])
         if index is None:
             if remove or "name" not in change or "amount" not in change:
-                raise ValueError("a new ingredient needs name and amount (removing needs index)")
+                raise ToolError("a new ingredient needs name and amount (removing needs index)")
             items.append(change)
         elif not 0 <= index < len(original):
-            raise ValueError(f"{kind} index {index} out of range (recipe has {len(original)})")
+            raise ToolError(f"{kind} index {index} out of range (recipe has {len(original)})")
         elif current_name is not None and (
             current_name.strip().lower() != (original[index].get("name") or "").lower()
         ):
-            raise ValueError(
+            raise ToolError(
                 f"{kind} index {index} is {original[index].get('name')!r}, not {current_name!r};"
                 " re-read the recipe with get_recipe"
             )
@@ -139,7 +143,7 @@ def find_batches(name: str = "", status: str = "") -> list[dict]:
     get_batch / get_readings / update_batch.
     """
     if status and status not in BATCH_STATUSES:
-        raise ValueError(f"unknown status: {status!r} (use {', '.join(BATCH_STATUSES)})")
+        raise ToolError(f"unknown status: {status!r} (use {', '.join(BATCH_STATUSES)})")
     params = {"status": status} if status else {}
     needle = name.strip().lower()
     batches = client.get_client().paginate("batches", params)
@@ -186,14 +190,14 @@ def update_batch(
     body: dict = {}
     if status is not None:
         if status not in BATCH_STATUSES:
-            raise ValueError(f"unknown status: {status!r} (use {', '.join(BATCH_STATUSES)})")
+            raise ToolError(f"unknown status: {status!r} (use {', '.join(BATCH_STATUSES)})")
         body["status"] = status
     for key, value in (measurements or {}).items():
         if key not in BATCH_MEASUREMENTS:
-            raise ValueError(f"unknown measurement: {key!r} (use {', '.join(BATCH_MEASUREMENTS)})")
+            raise ToolError(f"unknown measurement: {key!r} (use {', '.join(BATCH_MEASUREMENTS)})")
         body[key] = value
     if not body:
-        raise ValueError("nothing to update: pass status and/or measurements")
+        raise ToolError("nothing to update: pass status and/or measurements")
     result = client.get_client().patch(f"batches/{batch_id}", body)
     return {"batch_id": batch_id, "result": result}
 
@@ -249,7 +253,7 @@ def update_recipe(
     fields = fields or {}
     _check_fields(fields, RECIPE_FIELDS, "recipe field")
     if not fields and not ingredients:
-        raise ValueError("nothing to update: pass fields and/or ingredients")
+        raise ToolError("nothing to update: pass fields and/or ingredients")
     body: dict = dict(fields)
     if ingredients:
         current = client.get_client().get(f"recipes/{recipe_id}")
@@ -285,7 +289,7 @@ def set_inventory(
     """
     _check_kind(kind)
     if (amount is None) == (adjust is None):
-        raise ValueError("pass exactly one of amount or adjust")
+        raise ToolError("pass exactly one of amount or adjust")
     body = {"inventory": amount} if amount is not None else {"inventory_adjust": adjust}
     result = client.get_client().patch(f"inventory/{kind}/{item_id}", body)
     return {"item_id": item_id, "result": result}

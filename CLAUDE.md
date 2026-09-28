@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-MCP server (Python, FastMCP over stdio) wrapping the Brewfather v2 REST API. User docs, tool table, and setup live in README.md.
+MCP server (Python, mcp 2 `MCPServer` over stdio) wrapping the Brewfather v2 REST API. User docs, tool table, and setup live in README.md.
 
 ## Commands
 
@@ -29,7 +29,8 @@ Tools must call `client.get_client()` through the module (not `from .client impo
 - No tool may call a delete endpoint. The API key's scopes are the trust boundary.
 - The API accepts any field silently and never computes recipe stats (the app does). Writes go through field allowlists in `server.py`; never make stats writable.
 - Recipe ingredient lists are replaced wholesale on PATCH — send full raw items, never the compact projection.
-- Keep dependencies to `mcp` and `httpx`. `mcp` is capped `<2` because v2 removed `mcp.server.fastmcp`.
+- Keep dependencies to `mcp` and `httpx`.
+- Raise `ToolError` (or `BrewfatherError`, a subclass) for anything the model should read: mcp 2 replaces any other exception's message with a generic "Error executing tool".
 - API is metric-only (SG, L, kg/g, °C).
 - Acceptance tests must stay read-only. Detail fields added to `normalize.py` should be verified there against live objects.
 - Adding/changing a tool: update the README tool table and the `server.py` module docstring.
