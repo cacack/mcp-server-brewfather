@@ -15,7 +15,7 @@ from __future__ import annotations
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from . import client
+from . import __version__, client
 from .normalize import (
     INVENTORY_KINDS,
     compact_batch,
@@ -26,7 +26,7 @@ from .normalize import (
     compact_recipe_summary,
 )
 
-mcp = MCPServer("brewfather")
+mcp = MCPServer("brewfather", version=__version__)
 
 BATCH_STATUSES = ("Planning", "Brewing", "Fermenting", "Conditioning", "Completed", "Archived")
 
