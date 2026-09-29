@@ -290,6 +290,18 @@ def test_error_message_reaches_the_client(fake_api):
     assert api_error.is_error and "HTTP 403" in api_error.content[0].text
 
 
+def test_server_reports_package_version():
+    from mcp.client import Client
+
+    from mcp_server_brewfather import __version__
+
+    async def info():
+        async with Client(server.mcp) as c:
+            return c.server_info
+
+    assert anyio.run(info).version == __version__
+
+
 def test_create_recipe_posts_settings_and_ingredients(fake_api):
     api = fake_api({("POST", "recipes"): {"id": "r9"}})
     out = server.create_recipe(
