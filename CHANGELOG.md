@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/cacack/mcp-server-brewfather/compare/v0.1.0...v0.1.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* report the package version in the MCP server info ([1e4d882](https://github.com/cacack/mcp-server-brewfather/commit/1e4d8821ace91e693934ff16f0c98d8b38f6e837))
+
 ## 0.1.0 (2026-09-28)
 
 
