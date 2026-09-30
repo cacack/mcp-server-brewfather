@@ -33,6 +33,9 @@ open the recipe, but `get_recipe` returns the stored values, which the API never
 calculates (a new recipe has none).
 Stats can't be written through this server.
 
+Batch notes and log entries are read-only: `get_batch` returns them, but the API
+ignores any attempt to write them, so add notes in the Brewfather app.
+
 ## Setup
 
 ### 1. Generate an API key

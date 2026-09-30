@@ -27,7 +27,8 @@ Tools must call `client.get_client()` through the module (not `from .client impo
 ## Constraints
 
 - No tool may call a delete endpoint. The API key's scopes are the trust boundary.
-- The API accepts any field silently and never computes recipe stats (the app does). Writes go through field allowlists in `server.py`; never make stats writable.
+- The recipe API accepts any field silently and never computes recipe stats (the app does). Writes go through field allowlists in `server.py`; never make stats writable.
+- Batch PATCH ignores undocumented fields and answers `Nothing to update`; batch notes and the log (`batchNotes`, `notes`) can't be written. Don't retry (#25).
 - Recipe ingredient lists are replaced wholesale on PATCH — send full raw items, never the compact projection.
 - Keep dependencies to `mcp` and `httpx`.
 - Raise `ToolError` (or `BrewfatherError`, a subclass) for anything the model should read: mcp 2 replaces any other exception's message with a generic "Error executing tool".
