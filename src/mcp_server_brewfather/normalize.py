@@ -12,6 +12,9 @@ against live API objects and are checked by the acceptance suite.
 
 from __future__ import annotations
 
+import html
+import re
+import time
 from datetime import UTC, datetime
 
 INVENTORY_KINDS = ("fermentables", "hops", "miscs", "yeasts")
@@ -134,3 +137,76 @@ def compact_inventory(item: dict) -> dict:
 def compact_reading(r: dict) -> dict:
     """``{time, sg, temp, …}`` for a hydrometer/sensor reading."""
     return {"time": iso_datetime(r.get("time")), **pick(r, _READING_FIELDS)}
+
+
+_BR = re.compile(r"<\s*/?\s*br\s*/?\s*>", re.IGNORECASE)
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _html_text(s: str | None) -> str | None:
+    """Brew tracker step descriptions are HTML fragments; flatten them to text."""
+    if s is None:
+        return None
+    lines = html.unescape(_TAG.sub("", _BR.sub("\n", s))).splitlines()
+    return "\n".join(" ".join(line.split()) for line in lines if line.strip()) or None
+
+
+def _tracker_step(s: dict) -> dict:
+    """``{name, description, at, value, waits_for_you}`` for one brew tracker step."""
+    out = {
+        "name": s.get("name"),
+        "description": _html_text(s.get("description")),
+        "at": s.get("time"),
+        # Steps without a target (sparge, "Mashing Complete", …) carry value 0.
+        "value": s.get("value") or None,
+        "waits_for_you": True if s.get("pauseBefore") else None,
+    }
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def compact_brewtracker(t: dict, now_ms: int | None = None) -> dict:
+    """Current stage and step, time left on the stage timer, and what comes next.
+
+    The API's stage ``position`` (seconds left) is a snapshot taken when the timer was
+    last resumed at ``start`` (two live captures 60 s apart returned the same
+    position), so a running stage's remaining time is computed here. A tracker with
+    no current stage gets a ``message`` instead of ``stage``.
+    """
+    out = {
+        "active": t.get("active"),
+        "completed": t.get("completed"),
+        "started": iso_datetime(t.get("startTime")),
+    }
+    stages = t.get("stages") or []
+    index = t.get("stage")
+    if not (isinstance(index, int) and 0 <= index < len(stages)):
+        out["message"] = (
+            "The brew tracker is complete."
+            if t.get("completed")
+            else "The brew tracker has no current stage."
+        )
+    else:
+        stage = stages[index]
+        remaining = stage.get("position")
+        running = t.get("active") and not stage.get("paused") and stage.get("start") is not None
+        if remaining is not None and running:
+            now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+            remaining = max(0, round(remaining - (now_ms - stage["start"]) / 1000))
+        steps = stage.get("steps") or []
+        step = stage.get("step")
+        out.update(
+            {
+                "stage": stage.get("name") or f"Stage {index + 1}",
+                "paused": stage.get("paused"),
+                "stage_duration": stage.get("duration"),
+                "stage_remaining": remaining,
+            }
+        )
+        if isinstance(step, int) and 0 <= step < len(steps):
+            out["current_step"] = _tracker_step(steps[step])
+            upcoming = [_tracker_step(s) for s in steps[step + 1 :]]
+            if upcoming:
+                out["upcoming"] = upcoming
+        if index + 1 < len(stages):
+            out["next_stage"] = stages[index + 1].get("name")
+    return {k: v for k, v in out.items() if v is not None}

@@ -1,0 +1,151 @@
+{
+ "_id": "b1",
+ "name": "Batch #1",
+ "enabled": true,
+ "alarm": true,
+ "notify": true,
+ "active": true,
+ "completed": false,
+ "stage": 0,
+ "stages": [
+  {
+   "name": "Mash",
+   "type": "tracker",
+   "steps": [
+    {
+     "type": "mash",
+     "pauseBefore": false,
+     "time": 3600,
+     "duration": 0,
+     "priority": 10,
+     "name": "Start",
+     "description": "Start Mash Tracker"
+    },
+    {
+     "type": "event",
+     "pauseBefore": true,
+     "time": 3600,
+     "value": 76.2,
+     "duration": 0,
+     "priority": 10,
+     "name": "Mash",
+     "tooltip": "Heat mash to 169.2 °F",
+     "description": "Heat <b>4.47 gal</b> mash water to 169.2 °F"
+    },
+    {
+     "type": "event",
+     "time": 3600,
+     "tooltip": "60 min mash additions",
+     "description": "<b>60 min mash additions:</b></br> <i><b>8 oz</b> Carapils</i> </br><i><b>8 oz</b> Caramel Malt 120L</i> </br><i><b>1 lb</b> Caramel Malt 10L</i> </br><i><b>1 lb 8 oz</b> Chocolate</i> </br><i><b>8 lb</b> Pale Ale Malt 2-Row</i>",
+     "pauseBefore": true,
+     "priority": 9,
+     "startTime": 1790701785305,
+     "endTime": null
+    },
+    {
+     "type": "mash",
+     "time": 3600,
+     "value": 70,
+     "duration": 3600,
+     "name": "Temperature",
+     "tooltip": "60 min @ 158 °F",
+     "description": "Temperature - 60 min @ 158 °F",
+     "startTime": 1790701787570,
+     "endTime": null
+    },
+    {
+     "type": "event",
+     "priority": 11,
+     "pauseBefore": false,
+     "time": 0,
+     "value": 0,
+     "duration": 0,
+     "name": "Sparge",
+     "description": "<b>0 min</b>: Prepare HLT with <b>5.66 gal</b> sparge water"
+    },
+    {
+     "type": "event",
+     "priority": 10,
+     "pauseBefore": true,
+     "time": 0,
+     "value": 0,
+     "duration": 0,
+     "name": "Mash",
+     "description": "Mashing Complete"
+    },
+    {
+     "type": "event",
+     "priority": 10,
+     "pauseBefore": true,
+     "time": 0,
+     "value": 0,
+     "duration": 0,
+     "name": "Sparge",
+     "description": "Sparge with <b>4.66 gal</b> water  to reach pre-boil volume of <b>7.32 gal</b>"
+    },
+    {
+     "type": "event",
+     "priority": 10,
+     "pauseBefore": true,
+     "time": 0,
+     "value": 0,
+     "duration": 0,
+     "name": "Sparge",
+     "description": "Sparge Complete"
+    }
+   ],
+   "step": 3,
+   "paused": false,
+   "duration": 3600,
+   "position": 3599,
+   "start": 1790701787583
+  },
+  {
+   "name": "Boil",
+   "type": "tracker",
+   "position": 3600,
+   "duration": 3600,
+   "steps": [
+    {
+     "type": "boil",
+     "pauseBefore": false,
+     "time": 3600,
+     "duration": 0,
+     "priority": 10,
+     "name": "Start",
+     "description": "Start Boil Tracker"
+    },
+    {
+     "type": "event",
+     "time": 3600,
+     "tooltip": "60 min boil additions",
+     "description": "<b>60 min boil additions:</b></br> <i><b>0.6 oz</b> Nugget</i>",
+     "pauseBefore": false,
+     "priority": 0
+    },
+    {
+     "type": "event",
+     "time": 900,
+     "tooltip": "15 min boil additions",
+     "description": "<b>15 min boil additions:</b></br> <i><b>12 oz</b> Milk Sugar (Lactose)</i> </br><i><b>0.6 oz</b> Crystal</i> </br><i><b>0.5 oz</b> Willamette</i>",
+     "pauseBefore": false,
+     "priority": 0
+    },
+    {
+     "type": "event",
+     "pauseBefore": true,
+     "time": 0,
+     "duration": 0,
+     "priority": 0,
+     "name": "Boil",
+     "description": "End of Boil",
+     "final": true
+    }
+   ],
+   "step": 0,
+   "paused": true
+  }
+ ],
+ "startTime": 1790701718474,
+ "hidden": false
+}
