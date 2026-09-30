@@ -1,9 +1,9 @@
 """MCP server exposing Brewfather batches, recipes, readings, and inventory.
 
-Ten tools: find_batches, get_batch, get_readings, update_batch, find_recipes,
-get_recipe, create_recipe, update_recipe, list_inventory, set_inventory. Writes are
-limited to batch status/measurements, recipe creation and settings/ingredients,
-and inventory stock.
+Eleven tools: find_batches, get_batch, get_readings, get_brewtracker, update_batch,
+find_recipes, get_recipe, create_recipe, update_recipe, list_inventory,
+set_inventory. Writes are limited to batch status/measurements, recipe creation and
+settings/ingredients, and inventory stock.
 Nothing here deletes or writes computed recipe stats.
 
 Errors meant for the model are raised as ToolError: mcp 2 hides the message of any
@@ -20,6 +20,7 @@ from .normalize import (
     INVENTORY_KINDS,
     compact_batch,
     compact_batch_summary,
+    compact_brewtracker,
     compact_inventory,
     compact_reading,
     compact_recipe,
@@ -144,7 +145,7 @@ def find_batches(name: str = "", status: str = "") -> list[dict]:
     ``status`` is one of Planning, Brewing, Fermenting, Conditioning, Completed,
     Archived; empty means any. Returns compact dicts:
     {id, name, batch_no, status, brewer, brew_date, recipe}. Use the id with
-    get_batch / get_readings / update_batch.
+    get_batch / get_readings / get_brewtracker / update_batch.
     """
     if status and status not in BATCH_STATUSES:
         raise ToolError(f"unknown status: {status!r} (use {', '.join(BATCH_STATUSES)})")
@@ -189,6 +190,39 @@ def get_readings(batch_id: str, limit: int = 20) -> dict:
     if limit > 0:
         readings = readings[-limit:]
     return {"total": len(raw), "readings": [compact_reading(r) for r in readings]}
+
+
+NO_BREWTRACKER = "No brew tracker for this batch; start it from the brew day view in the app."
+
+
+@mcp.tool()
+def get_brewtracker(batch_id: str) -> dict:
+    """Read a batch's brew-day tracker: current stage (e.g. Mash, Boil) and step,
+    time left on the stage timer, the steps still to come, and the next stage.
+
+    Returns {active, completed, started, stage, paused, stage_duration,
+    stage_remaining, current_step, upcoming: [...], next_stage}. Times are seconds;
+    a step's ``at`` is the stage-timer value (seconds left) when it fires, and
+    ``waits_for_you`` marks steps the tracker pauses for. ``stage_remaining`` is
+    computed at call time. A step's ``value`` is its target temperature in °C,
+    omitted when it has none; descriptions use the account's display units.
+
+    When there is nothing to track — no tracker, or a finished one — the result has
+    a ``message`` instead of ``stage``. Check for ``message``, not ``active``:
+    ``active`` is also false for a paused tracker that still has a stage.
+    """
+    try:
+        tracker = client.get_client().get(f"batches/{batch_id}/brewtracker")
+    except client.BrewfatherError as e:
+        # A 404 may mean "no tracker" or "no such batch"; reading the batch tells
+        # them apart (and raises its own 404 for an unknown id).
+        if e.status != 404:
+            raise
+        client.get_client().get(f"batches/{batch_id}")
+        return {"active": False, "message": NO_BREWTRACKER}
+    if not isinstance(tracker, dict) or not tracker.get("stages"):
+        return {"active": False, "message": NO_BREWTRACKER}
+    return compact_brewtracker(tracker)
 
 
 @mcp.tool()

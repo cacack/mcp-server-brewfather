@@ -6,12 +6,17 @@ objects, reading order/limit, and input validation before any write is sent.
 
 from __future__ import annotations
 
+import copy
+import json
+from pathlib import Path
+
 import anyio
 import httpx
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server_brewfather import server
+from mcp_server_brewfather.normalize import compact_brewtracker
 
 # 2026-09-01T12:00:00Z in epoch ms, as Brewfather stores timestamps.
 _SEP1 = 1788264000000
@@ -127,6 +132,145 @@ def test_get_readings_limit_one_other_errors_propagate(fake_api):
     api = fake_api({("GET", "batches/b1/readings/last"): httpx.Response(500, text="boom")})
     with pytest.raises(ToolError, match="HTTP 500"):
         server.get_readings("b1", limit=1)
+    assert len(api.requests) == 1
+
+
+# Live GET /batches/:id/brewtracker captured 2026-09-29, running on the mash
+# temperature step; ids scrubbed.
+_BREWTRACKER = json.loads(
+    (Path(__file__).parent / "fixtures" / "brewtracker_running.json").read_text()
+)
+_MASH_START = _BREWTRACKER["stages"][0]["start"]
+
+
+def test_compact_brewtracker_running_stage():
+    out = compact_brewtracker(_BREWTRACKER, now_ms=_MASH_START + 83_000)
+    assert out["active"] is True
+    assert out["completed"] is False
+    assert out["started"] == "2026-09-29T17:08:38+00:00"
+    assert out["stage"] == "Mash"
+    assert out["paused"] is False
+    assert out["stage_duration"] == 3600
+    # position (3599) is a snapshot at ``start``; remaining counts down from it.
+    assert out["stage_remaining"] == 3516
+    assert out["current_step"] == {
+        "name": "Temperature",
+        "description": "Temperature - 60 min @ 158 °F",
+        "at": 3600,
+        "value": 70,
+    }
+    assert [s.get("name") for s in out["upcoming"]] == ["Sparge", "Mash", "Sparge", "Sparge"]
+    assert out["upcoming"][1] == {
+        "name": "Mash",
+        "description": "Mashing Complete",
+        "at": 0,
+        "waits_for_you": True,
+    }
+    assert out["next_stage"] == "Boil"
+
+
+def test_compact_brewtracker_strips_html_on_last_stage():
+    tracker = copy.deepcopy(_BREWTRACKER)
+    tracker["stage"] = 1
+    out = compact_brewtracker(tracker)
+    assert out["stage"] == "Boil"
+    assert out["current_step"] == {"name": "Start", "description": "Start Boil Tracker", "at": 3600}
+    assert out["upcoming"][1]["description"] == (
+        "15 min boil additions:\n12 oz Milk Sugar (Lactose)\n0.6 oz Crystal\n0.5 oz Willamette"
+    )
+    assert "next_stage" not in out
+
+
+# Mash keeps its ``start`` in both tests below; only the flag stops the countdown.
+def test_compact_brewtracker_paused_stage_keeps_position():
+    tracker = copy.deepcopy(_BREWTRACKER)
+    tracker["stages"][0]["paused"] = True
+    out = compact_brewtracker(tracker, now_ms=_MASH_START + 83_000)
+    assert out["paused"] is True
+    assert out["stage_remaining"] == 3599
+
+
+def test_compact_brewtracker_inactive_tracker_keeps_position():
+    tracker = {**_BREWTRACKER, "active": False}
+    assert compact_brewtracker(tracker, now_ms=_MASH_START + 83_000)["stage_remaining"] == 3599
+
+
+def test_compact_brewtracker_remaining_never_negative():
+    out = compact_brewtracker(_BREWTRACKER, now_ms=_MASH_START + 10**9)
+    assert out["stage_remaining"] == 0
+
+
+def test_compact_brewtracker_last_step_has_no_upcoming():
+    tracker = copy.deepcopy(_BREWTRACKER)
+    tracker["stages"][0]["step"] = len(tracker["stages"][0]["steps"]) - 1
+    out = compact_brewtracker(tracker)
+    assert out["current_step"]["description"] == "Sparge Complete"
+    assert "upcoming" not in out
+
+
+@pytest.mark.parametrize(
+    ("stage", "completed", "message"),
+    [
+        (2, True, "The brew tracker is complete."),
+        (-1, False, "The brew tracker has no current stage."),
+        (None, False, "The brew tracker has no current stage."),
+    ],
+)
+def test_compact_brewtracker_without_current_stage_says_so(stage, completed, message):
+    tracker = {**_BREWTRACKER, "stage": stage, "completed": completed}
+    out = compact_brewtracker(tracker)
+    assert out["message"] == message
+    assert "stage" not in out
+
+
+def test_compact_brewtracker_unnamed_stage_gets_a_label():
+    tracker = copy.deepcopy(_BREWTRACKER)
+    del tracker["stages"][0]["name"]
+    assert compact_brewtracker(tracker)["stage"] == "Stage 1"
+
+
+def test_get_brewtracker_projects_tracker(fake_api):
+    api = fake_api({("GET", "batches/b1/brewtracker"): _BREWTRACKER})
+    out = server.get_brewtracker("b1")
+    assert out["stage"] == "Mash"
+    assert out["current_step"]["name"] == "Temperature"
+    assert [r.url.path for r in api.requests] == ["/v2/batches/b1/brewtracker"]
+
+
+@pytest.mark.parametrize("body", [{}, "", None])
+def test_get_brewtracker_empty_body_says_no_tracker(fake_api, body):
+    fake_api({("GET", "batches/b1/brewtracker"): httpx.Response(200, json=body)})
+    assert server.get_brewtracker("b1") == {
+        "active": False,
+        "message": server.NO_BREWTRACKER,
+    }
+
+
+def test_get_brewtracker_404_on_existing_batch_says_no_tracker(fake_api):
+    api = fake_api({("GET", "batches/b1"): _batch("b1", "Hazy IPA", status="Brewing")})
+    assert server.get_brewtracker("b1") == {"active": False, "message": server.NO_BREWTRACKER}
+    assert [r.url.path for r in api.requests] == [
+        "/v2/batches/b1/brewtracker",
+        "/v2/batches/b1",
+    ]
+
+
+def test_get_brewtracker_unknown_batch_errors(fake_api):
+    fake_api({})
+    with pytest.raises(ToolError, match="HTTP 404"):
+        server.get_brewtracker("nope")
+
+
+def test_get_brewtracker_batch_check_errors_propagate(fake_api):
+    fake_api({("GET", "batches/b1"): httpx.Response(500, text="boom")})
+    with pytest.raises(ToolError, match="HTTP 500"):
+        server.get_brewtracker("b1")
+
+
+def test_get_brewtracker_other_errors_propagate(fake_api):
+    api = fake_api({("GET", "batches/b1/brewtracker"): httpx.Response(500, text="boom")})
+    with pytest.raises(ToolError, match="HTTP 500"):
+        server.get_brewtracker("b1")
     assert len(api.requests) == 1
 
 

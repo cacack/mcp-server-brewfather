@@ -43,6 +43,19 @@ def test_batches_roundtrip():
     assert latest["readings"] == readings["readings"][-1:]
 
 
+def test_brewtracker_projects_or_reports_none():
+    batches = server.find_batches(status="Brewing") or server.find_batches()[:1]
+    if not batches:
+        pytest.skip("account has no batches")
+    for batch in batches:
+        tracker = server.get_brewtracker(batch["id"])
+        if "message" in tracker:
+            continue
+        # A live tracker must project a current step and a sane stage timer.
+        assert "current_step" in tracker, f"{batch['id']}: {sorted(tracker)}"
+        assert 0 <= tracker["stage_remaining"] <= tracker["stage_duration"]
+
+
 @pytest.mark.parametrize("kind", INVENTORY_KINDS)
 def test_inventory_lists(kind):
     items = server.list_inventory(kind)
