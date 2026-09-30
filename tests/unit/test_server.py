@@ -91,6 +91,103 @@ def test_get_batch_projects_measured_and_recipe(fake_api):
     assert "water" not in out["recipe"]
 
 
+def test_get_batch_projects_notes_log_and_events(fake_api):
+    # Shapes from live batches: log stored out of order, typed notes lack ``type``,
+    # hidden status changes, and date-only (dayEvent) vs timed events.
+    notes = [
+        {"note": "", "type": "statusChanged", "status": "Conditioning", "timestamp": _SEP1 + 3000},
+        {"note": "Added 4oz Simcoe", "status": "Fermenting", "timestamp": _SEP1 + 2000},
+        {
+            "note": "",
+            "hidden": True,
+            "type": "statusChanged",
+            "status": "Fermenting",
+            "timestamp": _SEP1 + 1500,
+        },
+        {
+            "note": "Pitched warm",
+            "type": "statusChanged",
+            "status": "Fermenting",
+            "timestamp": _SEP1 + 1000,
+        },
+    ]
+    events = [
+        {
+            "eventType": "event-batch-dry-hop",
+            "time": _SEP1 + 86_400_000,
+            "dayEvent": False,
+            "active": True,
+            "description": "Dry hop 100 g Citra when SG < 1.015",
+            "descriptionHTML": "<b>Dry hop</b>",
+            "title": "Dry Hop - Batch #7",
+            "notifyTime": 0,
+        },
+        {
+            "eventText": "Brew Day &mdash; Reminder",
+            "eventType": "event-batch-brew-day-reminder",
+            "time": _SEP1,
+            "dayEvent": True,
+            "active": False,
+            "description": "Brew Day (Hazy IPA)",
+        },
+    ]
+    fake_api(
+        {
+            ("GET", "batches/b1"): _batch(
+                "b1", "Hazy IPA", batchNotes="Pump failure", notes=notes, events=events
+            )
+        }
+    )
+    out = server.get_batch("b1")
+    assert out["notes"] == "Pump failure"
+    assert out["log"] == [
+        {
+            "time": "2026-09-01T12:00:01+00:00",
+            "status": "Fermenting",
+            "note": "Pitched warm",
+            "type": "statusChanged",
+        },
+        {"time": "2026-09-01T12:00:02+00:00", "status": "Fermenting", "note": "Added 4oz Simcoe"},
+        {"time": "2026-09-01T12:00:03+00:00", "status": "Conditioning", "type": "statusChanged"},
+    ]
+    assert out["events"] == [
+        {
+            "time": "2026-09-01",
+            "event": "Brew Day — Reminder",
+            "description": "Brew Day (Hazy IPA)",
+            "active": False,
+        },
+        {
+            "time": "2026-09-02T12:00:00+00:00",
+            # No eventText on live dry-hop events: named from eventType.
+            "event": "dry hop",
+            # Plain-text description kept as-is, "<" included.
+            "description": "Dry hop 100 g Citra when SG < 1.015",
+            "active": True,
+        },
+    ]
+
+
+def test_get_batch_names_an_event_without_text_or_type(fake_api):
+    fake_api({("GET", "batches/b1"): _batch("b1", "Hazy IPA", events=[{"time": _SEP1}])})
+    assert server.get_batch("b1")["events"] == [
+        {"time": "2026-09-01T12:00:00+00:00", "event": "event"}
+    ]
+
+
+def test_get_batch_omits_empty_notes_log_and_events(fake_api):
+    hidden_only = [{"note": "", "hidden": True, "type": "statusChanged", "timestamp": _SEP1}]
+    fake_api(
+        {
+            ("GET", "batches/b1"): _batch(
+                "b1", "Hazy IPA", batchNotes=None, notes=hidden_only, events=[]
+            )
+        }
+    )
+    out = server.get_batch("b1")
+    assert not {"notes", "log", "events"} & out.keys()
+
+
 def test_get_readings_sorts_and_limits(fake_api):
     readings = [{"time": _SEP1 + i * 1000, "sg": 1060 - i, "temp": 19} for i in (2, 0, 1)]
     fake_api({("GET", "batches/b1/readings"): readings})

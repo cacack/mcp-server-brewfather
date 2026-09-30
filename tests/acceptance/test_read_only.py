@@ -10,6 +10,8 @@ Run with:
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from mcp_server_brewfather import server
@@ -41,6 +43,29 @@ def test_batches_roundtrip():
     assert readings["total"] >= len(readings["readings"])
     latest = server.get_readings(batch["id"], limit=1)
     assert latest["readings"] == readings["readings"][-1:]
+
+
+_LEFTOVER_MARKUP = re.compile(r"<[^>]+>|&[#\w]+;")
+
+
+def test_batch_notes_log_and_events_project():
+    # A batch that has left Planning has logged at least one status change.
+    batches = [b for b in server.find_batches() if b.get("status") != "Planning"]
+    if not batches:
+        pytest.skip("account has no batches past Planning")
+    for summary in batches:
+        batch = server.get_batch(summary["id"])
+        assert batch.get("log"), f"{summary['id']}: no log in {sorted(batch)}"
+        times = [e["time"] for e in batch["log"]]
+        assert all(times) and times == sorted(times)
+        assert all(e["status"] for e in batch["log"])
+        texts = [batch.get("notes", "")] + [e.get("note", "") for e in batch["log"]]
+        for event in batch.get("events", []):
+            assert event["time"] and event["event"], event
+            texts += [event["event"], event.get("description", "")]
+        # Notes and descriptions are plain text; eventText entities get unescaped.
+        leftovers = [t for t in texts if _LEFTOVER_MARKUP.search(t)]
+        assert not leftovers, f"{summary['id']}: markup left in {leftovers}"
 
 
 def test_brewtracker_projects_or_reports_none():

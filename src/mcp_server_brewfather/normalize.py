@@ -82,9 +82,61 @@ def compact_batch_summary(b: dict) -> dict:
     return {k: v for k, v in out.items() if v is not None}
 
 
+def _log_entry(n: dict) -> dict:
+    """``{time, status, note, type}`` for one batch log entry.
+
+    Entries the user typed have no ``type``; automatic ones carry one (only
+    ``statusChanged`` seen so far). ``note`` is plain text on live batches.
+    """
+    out = {
+        "time": iso_datetime(n.get("timestamp")),
+        "status": n.get("status"),
+        "note": n.get("note") or None,
+        "type": n.get("type"),
+    }
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _batch_event(e: dict) -> dict:
+    """``{time, event, description, active}`` for one scheduled batch event.
+
+    ``time`` is a date for all-day events, a timestamp otherwise. ``active`` is true
+    while the event is still upcoming (live events: future ones true, past ones false).
+    """
+    to_iso = iso_date if e.get("dayEvent") else iso_datetime
+    # Dry-hop events carry no eventText; name them from eventType instead.
+    kind = (e.get("eventType") or "").removeprefix("event-batch-").replace("-", " ")
+    out = {
+        "time": to_iso(e.get("time")),
+        # eventText holds HTML entities ("Brew Day &mdash; Reminder").
+        "event": _html_text(e.get("eventText")) or kind or "event",
+        # description is plain text (the markup lives in descriptionHTML), so it is
+        # passed through: stripping tags would eat text like "SG < 1.015".
+        "description": e.get("description") or None,
+        "active": e.get("active"),
+    }
+    return {k: v for k, v in out.items() if v is not None}
+
+
 def compact_batch(b: dict) -> dict:
-    """Batch summary, dates, estimated and measured values, and the embedded recipe."""
+    """Batch summary, dates, notes, log, scheduled events, estimated and measured
+    values, and the embedded recipe.
+    """
     out = compact_batch_summary(b)
+    # The brewer's free-text notes (plain text). Not the API's own ``notes`` field,
+    # which is the batch log and becomes ``log`` below.
+    if b.get("batchNotes"):
+        out["notes"] = b["batchNotes"]
+    # The API stores the log out of order; entries hidden in the app stay hidden.
+    log = sorted(
+        (n for n in b.get("notes") or [] if not n.get("hidden")),
+        key=lambda n: n.get("timestamp") or 0,
+    )
+    if log:
+        out["log"] = [_log_entry(n) for n in log]
+    events = sorted(b.get("events") or [], key=lambda e: e.get("time") or 0)
+    if events:
+        out["events"] = [_batch_event(e) for e in events]
     if b.get("fermentationStartDate") is not None:
         out["fermentation_start"] = iso_date(b["fermentationStartDate"])
     if b.get("bottlingDate") is not None:

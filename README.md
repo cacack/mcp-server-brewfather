@@ -13,7 +13,7 @@ Brewfather has no official MCP server; this wraps the public
 | Tool | What it does |
 |------|--------------|
 | `find_batches(name?, status?)` | Find batches by name substring and/or status → `{id, name, batch_no, status, brewer, brew_date, recipe}` |
-| `get_batch(batch_id)` | Batch summary, measured values, and embedded recipe (stats + ingredient bill) |
+| `get_batch(batch_id)` | Batch summary, measured values, notes and log entries, scheduled events (brew day, dry hop, bottling, …), and embedded recipe (stats + ingredient bill) |
 | `get_readings(batch_id, limit?)` | Most recent hydrometer/sensor readings, oldest→newest (`limit=0` for all; `limit=1` fetches only the latest reading, without `total`) |
 | `get_brewtracker(batch_id)` | Brew-day tracker: current stage and step, seconds left on the stage timer, upcoming steps, next stage |
 | `update_batch(batch_id, status?, measurements?)` | Set status and/or `measured*` values (validated before sending) |
