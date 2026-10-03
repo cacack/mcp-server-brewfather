@@ -24,6 +24,8 @@ def test_recipes_roundtrip():
     recipes = server.find_recipes()
     if not recipes:
         pytest.skip("account has no recipes")
+    for r in recipes:
+        server._check_id(r["id"], "recipe_id")  # live ids pass the path allowlist
     recipe = server.get_recipe(recipes[0]["id"])
     assert recipe["name"] == recipes[0]["name"]
     # Detail fields beyond the documented list defaults — confirms the projection.
@@ -35,6 +37,8 @@ def test_batches_roundtrip():
     batches = server.find_batches()
     if not batches:
         pytest.skip("account has no batches")
+    for b in batches:
+        server._check_id(b["id"], "batch_id")  # live ids pass the path allowlist
     batch = server.get_batch(batches[0]["id"])
     assert batch["id"] == batches[0]["id"]
     assert "recipe" in batch
@@ -85,3 +89,5 @@ def test_brewtracker_projects_or_reports_none():
 def test_inventory_lists(kind):
     items = server.list_inventory(kind)
     assert all("id" in i and "name" in i for i in items)
+    for i in items:
+        server._check_id(i["id"], "item_id")  # live ids pass the path allowlist

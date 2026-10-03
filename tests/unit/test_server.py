@@ -430,6 +430,33 @@ def test_set_inventory_requires_exactly_one(fake_api, kwargs):
     assert api.requests == []
 
 
+_ID_CALLS = {
+    "get_batch": lambda i: server.get_batch(i),
+    "get_readings": lambda i: server.get_readings(i),
+    "get_brewtracker": lambda i: server.get_brewtracker(i),
+    "update_batch": lambda i: server.update_batch(i, status="Completed"),
+    "get_recipe": lambda i: server.get_recipe(i),
+    "update_recipe": lambda i: server.update_recipe(i, fields={"name": "x"}),
+    "set_inventory": lambda i: server.set_inventory("hops", i, adjust=1),
+}
+
+
+@pytest.mark.parametrize("bad_id", ["../../x", "a/b", "a\\b", "a?b", "a#b", "..", "%2F", ""])
+@pytest.mark.parametrize("tool", _ID_CALLS)
+def test_ids_are_checked_before_any_request(fake_api, tool, bad_id):
+    api = fake_api({})
+    with pytest.raises(ToolError, match="invalid"):
+        _ID_CALLS[tool](bad_id)
+    assert api.requests == []
+
+
+def test_set_inventory_accepts_dashed_default_id(fake_api):
+    # Stock items copied from Brewfather's defaults keep ids like this one.
+    api = fake_api({("PATCH", "inventory/hops/default-0c4aeb7c"): "Updated"})
+    server.set_inventory("hops", "default-0c4aeb7c", adjust=1)
+    assert api.bodies() == [{"inventory_adjust": 1}]
+
+
 def _recipe():
     return {
         "_id": "r1",
