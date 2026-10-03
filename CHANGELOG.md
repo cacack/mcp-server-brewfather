@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/cacack/mcp-server-brewfather/compare/v0.1.1...v0.2.0) (2026-10-03)
+
+
+### Features
+
+* add get_brewtracker tool for brew-day progress ([0740485](https://github.com/cacack/mcp-server-brewfather/commit/07404858e4b23cb46ac09f9ec5a3c88c76aaea01)), closes [#11](https://github.com/cacack/mcp-server-brewfather/issues/11)
+* return batch notes, log entries and events from get_batch ([8e56fc3](https://github.com/cacack/mcp-server-brewfather/commit/8e56fc3d0177d993056fff750ba1659b7b207b2d)), closes [#24](https://github.com/cacack/mcp-server-brewfather/issues/24)
+
+
+### Bug Fixes
+
+* reject ids that could leave their request path ([1a500fc](https://github.com/cacack/mcp-server-brewfather/commit/1a500fc4685c95f2366ff81cd9c8ab5eeb08dd77)), closes [#20](https://github.com/cacack/mcp-server-brewfather/issues/20)
+* take get_readings limit=1 from the readings list, not readings/last ([abde3e5](https://github.com/cacack/mcp-server-brewfather/commit/abde3e52a8aba352a31bfaa3e77a5ea9568c7119)), closes [#22](https://github.com/cacack/mcp-server-brewfather/issues/22)
+
 ## [0.1.1](https://github.com/cacack/mcp-server-brewfather/compare/v0.1.0...v0.1.1) (2026-09-29)
 
 
