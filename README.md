@@ -117,6 +117,18 @@ on every PR; the `CI Success` job is the aggregate gate. Acceptance tests are no
 run in CI — they need live credentials and stay local/manual. They are read-only
 and never modify your brewing data.
 
+The recipe write tools have a separate manual live check, also never run in CI:
+
+```bash
+uv run python scripts/live_check_writes.py   # needs recipes.read + recipes.write
+```
+
+It creates one scratch recipe named `MCP live-check <timestamp> (delete me)`, runs
+`update_recipe` against it (change, add, remove, settings, stale-index guard) and
+prints PASS/FAIL per check. It writes to nothing else. The server can't delete, so
+delete the scratch recipe in the Brewfather app afterwards; the script prints its
+name and id.
+
 Releases are automated: release-please keeps a release PR open from the
 conventional commits on `main`, and merging it tags `vX.Y.Z`, which triggers
 `release.yml` to publish to PyPI via trusted publishing.

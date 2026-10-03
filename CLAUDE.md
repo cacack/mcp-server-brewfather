@@ -12,6 +12,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run pytest                             # unit tests; acceptance auto-skipped
 uv run pytest tests/unit/test_server.py::test_find_batches_rejects_unknown_status
 uv run pytest --run-acceptance            # live read-only API checks; needs BREWFATHER_USER_ID/API_KEY
+uv run python scripts/live_check_writes.py  # manual live recipe-write check; creates one scratch recipe
 ```
 
 ## Architecture
