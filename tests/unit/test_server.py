@@ -197,39 +197,22 @@ def test_get_readings_sorts_and_limits(fake_api):
     assert out["readings"][-1]["time"] == "2026-09-01T12:00:02+00:00"
 
 
-def test_get_readings_limit_one_fetches_only_last(fake_api):
-    api = fake_api({("GET", "batches/b1/readings/last"): {"time": _SEP1, "sg": 1012, "temp": 18}})
+def test_get_readings_limit_one_is_newest_of_list(fake_api):
+    # readings/last ignores readings trimmed from the batch, so it isn't used (#22).
+    readings = [{"time": _SEP1 + i * 1000, "sg": 1012 - i, "temp": 18} for i in (1, 0)]
+    api = fake_api({("GET", "batches/b1/readings"): readings})
     out = server.get_readings("b1", limit=1)
-    assert [r.url.path for r in api.requests] == ["/v2/batches/b1/readings/last"]
-    assert out == {"readings": [{"time": "2026-09-01T12:00:00+00:00", "sg": 1012, "temp": 18}]}
+    assert [r.url.path for r in api.requests] == ["/v2/batches/b1/readings"]
+    assert out == {
+        "total": 2,
+        "readings": [{"time": "2026-09-01T12:00:01+00:00", "sg": 1011, "temp": 18}],
+    }
 
 
-@pytest.mark.parametrize("body", [{}, "", None])
-def test_get_readings_limit_one_without_readings_is_empty(fake_api, body):
-    fake_api({("GET", "batches/b1/readings/last"): httpx.Response(200, json=body)})
-    assert server.get_readings("b1", limit=1) == {"readings": []}
-
-
-def test_get_readings_limit_one_falls_back_to_list_on_404(fake_api):
-    api = fake_api({("GET", "batches/b1/readings"): []})
-    assert server.get_readings("b1", limit=1) == {"total": 0, "readings": []}
-    assert [r.url.path for r in api.requests] == [
-        "/v2/batches/b1/readings/last",
-        "/v2/batches/b1/readings",
-    ]
-
-
-def test_get_readings_limit_one_unknown_batch_still_errors(fake_api):
+def test_get_readings_unknown_batch_errors(fake_api):
     fake_api({})
     with pytest.raises(ToolError, match="HTTP 404"):
-        server.get_readings("nope", limit=1)
-
-
-def test_get_readings_limit_one_other_errors_propagate(fake_api):
-    api = fake_api({("GET", "batches/b1/readings/last"): httpx.Response(500, text="boom")})
-    with pytest.raises(ToolError, match="HTTP 500"):
-        server.get_readings("b1", limit=1)
-    assert len(api.requests) == 1
+        server.get_readings("nope")
 
 
 # Live GET /batches/:id/brewtracker captured 2026-09-29, running on the mash
