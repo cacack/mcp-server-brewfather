@@ -53,6 +53,26 @@ def test_find_batches_filters_by_name_and_passes_status(fake_api):
     assert api.requests[0].url.params["status"] == "Fermenting"
 
 
+def test_find_batches_returns_newest_first(fake_api):
+    day = 86_400_000
+    planning = _batch("p", "Next", status="Planning", batchNo=60)
+    del planning["brewDate"]
+    # One page in _id order, as the API returns it (a short page ends pagination).
+    page = [
+        _batch("a", "Old", batchNo=40, brewDate=_SEP1 - 400 * day),
+        _batch("b", "Same", batchNo=56),
+        planning,
+        _batch("c", "Same", batchNo=58),
+        _batch("d", "Mid", batchNo=50, brewDate=_SEP1 - day),
+    ]
+    api = fake_api({("GET", "batches"): [page]})
+    out = server.find_batches()
+    assert [b["batch_no"] for b in out] == [60, 58, 56, 50, 40]
+    assert "brew_date" not in out[0]
+    # Sorted locally: start_after pagination is by _id, so the API's order_by isn't used.
+    assert all("order_by" not in r.url.params for r in api.requests)
+
+
 def test_find_batches_rejects_unknown_status(fake_api):
     api = fake_api({})
     with pytest.raises(ToolError, match="unknown status"):
