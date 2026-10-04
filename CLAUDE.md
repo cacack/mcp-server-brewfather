@@ -34,6 +34,7 @@ Tools must call `client.get_client()` through the module (not `from .client impo
 - Inventory PATCH merges details (unsent fields kept); a body of only `inventory`/`inventory_adjust` is stock-only. List endpoints omit fields like `origin` unless `complete=true` (#12).
 - Keep dependencies to `mcp` and `httpx`.
 - Raise `ToolError` (or `BrewfatherError`, a subclass) for anything the model should read: mcp 2 replaces any other exception's message with a generic "Error executing tool".
+- Annotate tools `-> dict[str, Any]` or `-> list[dict]`: a bare `-> dict` gets no output schema and no structured content (#13).
 - API is metric-only (SG, L, kg/g, °C).
 - Acceptance tests must stay read-only. Detail fields added to `normalize.py` should be verified there against live objects.
 - Adding/changing a tool: update the README tool table and the `server.py` module docstring.
