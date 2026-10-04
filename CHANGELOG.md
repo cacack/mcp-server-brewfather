@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/cacack/mcp-server-brewfather/compare/v0.3.0...v0.4.0) (2026-10-04)
+
+
+### Features
+
+* return find_batches results newest first ([95ffc48](https://github.com/cacack/mcp-server-brewfather/commit/95ffc48ae139be58adc1cd3b0541cd63f13b8a1b)), closes [#35](https://github.com/cacack/mcp-server-brewfather/issues/35)
+
 ## [0.3.0](https://github.com/cacack/mcp-server-brewfather/compare/v0.2.0...v0.3.0) (2026-10-04)
 
 
