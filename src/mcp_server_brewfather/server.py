@@ -15,6 +15,7 @@ other exception behind a generic "Error executing tool".
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -187,7 +188,7 @@ def find_batches(name: str = "", status: str = "") -> list[dict]:
 
 
 @mcp.tool()
-def get_batch(batch_id: str) -> dict:
+def get_batch(batch_id: str) -> dict[str, Any]:
     """Read one batch: summary, fermentation/bottling dates, estimated targets
     (OG, FG, IBU, color), all measured values, and the embedded recipe (target
     stats + ingredient bill). Units are metric (SG, L, °C).
@@ -206,7 +207,7 @@ def get_batch(batch_id: str) -> dict:
 
 
 @mcp.tool()
-def get_readings(batch_id: str, limit: int = 20) -> dict:
+def get_readings(batch_id: str, limit: int = 20) -> dict[str, Any]:
     """Read a batch's sensor readings (hydrometer, e.g. Tilt/iSpindel), newest last.
 
     Returns {total, readings: [{time, sg, temp, ...}]} with only the most recent
@@ -227,7 +228,7 @@ NO_BREWTRACKER = "No brew tracker for this batch; start it from the brew day vie
 
 
 @mcp.tool()
-def get_brewtracker(batch_id: str) -> dict:
+def get_brewtracker(batch_id: str) -> dict[str, Any]:
     """Read a batch's brew-day tracker: current stage (e.g. Mash, Boil) and step,
     time left on the stage timer, the steps still to come, and the next stage.
 
@@ -260,7 +261,7 @@ def get_brewtracker(batch_id: str) -> dict:
 @mcp.tool()
 def update_batch(
     batch_id: str, status: str | None = None, measurements: dict[str, float] | None = None
-) -> dict:
+) -> dict[str, Any]:
     """Update a batch's status and/or measured values.
 
     ``status``: Planning, Brewing, Fermenting, Conditioning, Completed, Archived.
@@ -298,7 +299,7 @@ def find_recipes(name: str = "") -> list[dict]:
 
 
 @mcp.tool()
-def get_recipe(recipe_id: str) -> dict:
+def get_recipe(recipe_id: str) -> dict[str, Any]:
     """Read one recipe: summary, target stats (batchSize, og, fg, abv, ibu, color, …)
     and ingredient bill (fermentables, hops, miscs, yeasts). Units are metric.
     Stats are as last saved in the Brewfather app, so they can be stale after
@@ -314,7 +315,7 @@ def create_recipe(
     type: str = "All Grain",
     fields: dict[str, str | float] | None = None,
     ingredients: list[dict] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Create a new recipe.
 
     ``type`` is All Grain or Extract. ``fields`` takes the same settings as
@@ -344,7 +345,7 @@ def update_recipe(
     recipe_id: str,
     fields: dict[str, str | float] | None = None,
     ingredients: list[dict] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Edit a recipe's settings and/or ingredient bill.
 
     ``fields`` keys (metric — liters, minutes, percent): name, author, notes,
@@ -401,7 +402,7 @@ def list_inventory(kind: str, name: str = "", in_stock_only: bool = False) -> li
 @mcp.tool()
 def set_inventory(
     kind: str, item_id: str, amount: float | None = None, adjust: float | None = None
-) -> dict:
+) -> dict[str, Any]:
     """Change the stock of one inventory item.
 
     Pass exactly one of ``amount`` (set absolute stock) or ``adjust`` (add, or
@@ -423,7 +424,7 @@ def create_inventory_item(
     name: str,
     fields: dict[str, str | float] | None = None,
     amount: float | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Add a new item to the inventory.
 
     ``kind`` is fermentables, hops, miscs, or yeasts. ``amount`` is the starting
@@ -451,7 +452,9 @@ def create_inventory_item(
 
 
 @mcp.tool()
-def update_inventory_item(kind: str, item_id: str, fields: dict[str, str | float]) -> dict:
+def update_inventory_item(
+    kind: str, item_id: str, fields: dict[str, str | float]
+) -> dict[str, Any]:
     """Edit an inventory item's details (not its stock — use set_inventory).
 
     ``kind`` is fermentables, hops, miscs, or yeasts. Only the given ``fields``

@@ -670,6 +670,41 @@ def test_error_message_reaches_the_client(fake_api):
     assert api_error.is_error and "HTTP 403" in api_error.content[0].text
 
 
+def test_every_tool_advertises_an_output_schema():
+    # A bare `-> dict` gets no output schema under mcp 2; annotate `-> dict[str, Any]`.
+    tools = anyio.run(server.mcp.list_tools)
+    assert tools
+    assert [t.name for t in tools if t.output_schema is None] == []
+
+
+@pytest.mark.parametrize(
+    "tool, args, direct",
+    [
+        ("get_recipe", {"recipe_id": "r1"}, lambda: server.get_recipe("r1")),
+        (
+            "update_batch",
+            {"batch_id": "b1", "status": "Completed"},
+            lambda: server.update_batch("b1", status="Completed"),
+        ),
+    ],
+)
+def test_single_object_tools_return_structured_content(fake_api, tool, args, direct):
+    from mcp.client import Client
+
+    fake_api({("GET", "recipes/r1"): _recipe(), ("PATCH", "batches/b1"): "Updated"})
+    expected = direct()
+
+    async def call():
+        async with Client(server.mcp) as c:
+            return await c.call_tool(tool, args)
+
+    result = anyio.run(call)
+    assert not result.is_error
+    assert result.structured_content == expected and expected
+    # The text a model reads is unchanged: the same dict, as JSON.
+    assert json.loads(result.content[0].text) == expected
+
+
 def test_server_reports_package_version():
     from mcp.client import Client
 
