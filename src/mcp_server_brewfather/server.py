@@ -176,14 +176,21 @@ def find_batches(name: str = "", status: str = "") -> list[dict]:
 
     ``status`` is one of Planning, Brewing, Fermenting, Conditioning, Completed,
     Archived; empty means any. Returns compact dicts:
-    {id, name, batch_no, status, brewer, brew_date, recipe}. Use the id with
-    get_batch / get_readings / get_brewtracker / update_batch.
+    {id, name, batch_no, status, brewer, brew_date, recipe}, newest first: batches
+    without a brew date (usually Planning) lead, then by brew date, ties by higher
+    batch_no. Use the id with get_batch / get_readings / get_brewtracker / update_batch.
     """
     if status and status not in BATCH_STATUSES:
         raise ToolError(f"unknown status: {status!r} (use {', '.join(BATCH_STATUSES)})")
     params = {"status": status} if status else {}
     needle = name.strip().lower()
     batches = client.get_client().paginate("batches", params)
+    # Sorted here, not with the API's order_by: pagination advances by _id (#35).
+    batches = sorted(
+        batches,
+        key=lambda b: (b.get("brewDate") is None, b.get("brewDate") or 0, b.get("batchNo") or 0),
+        reverse=True,
+    )
     return [compact_batch_summary(b) for b in batches if _matches(b, needle)]
 
 
