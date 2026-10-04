@@ -23,6 +23,8 @@ Brewfather has no official MCP server; this wraps the public
 | `update_recipe(recipe_id, fields?, ingredients?)` | Change settings (batch size, boil time, efficiency, …) and add/change/remove ingredients |
 | `list_inventory(kind, name?, in_stock_only?)` | Fermentables, hops, miscs, or yeasts in stock |
 | `set_inventory(kind, item_id, amount? \| adjust?)` | Set absolute stock, or add/subtract |
+| `create_inventory_item(kind, name, fields?, amount?)` | Add an inventory item with details (supplier, alpha, color, attenuation, …) and optional starting stock |
+| `update_inventory_item(kind, item_id, fields)` | Change an item's details (name, supplier, alpha, color/potential, attenuation, …); stock goes through `set_inventory` |
 
 All values are metric (SG, liters, kg/g, °C) — the API accepts nothing else.
 Timestamps are returned as ISO-8601 UTC.
@@ -87,7 +89,8 @@ Claude Desktop (`claude_desktop_config.json`):
 - **The API key's scopes are the trust boundary.** For read-only use, grant only
   `batches.read`, `recipes.read`, `inventory.read`. Add `batches.write` /
   `recipes.write` / `inventory.write` to enable `update_batch` / `create_recipe` and
-  `update_recipe` / `set_inventory`. **Never grant `*.delete`** — no tool uses it.
+  `update_recipe` / `set_inventory`, `create_inventory_item` and
+  `update_inventory_item`. **Never grant `*.delete`** — no tool uses it.
 - No delete tools. Every write is checked against an allowlist of fields before
   it's sent, because the API silently accepts unknown fields.
 - **Two dependencies only** (`mcp`, `httpx` — the latter already required by `mcp`);
@@ -117,17 +120,20 @@ on every PR; the `CI Success` job is the aggregate gate. Acceptance tests are no
 run in CI — they need live credentials and stay local/manual. They are read-only
 and never modify your brewing data.
 
-The recipe write tools have a separate manual live check, also never run in CI:
+The write tools have a separate manual live check, also never run in CI:
 
 ```bash
-uv run python scripts/live_check_writes.py   # needs recipes.read + recipes.write
+uv run python scripts/live_check_writes.py               # needs recipes.read + recipes.write
+uv run python scripts/live_check_writes.py --inventory   # also needs inventory.read + inventory.write
 ```
 
 It creates one scratch recipe named `MCP live-check <timestamp> (delete me)`, runs
 `update_recipe` against it (change, add, remove, settings, stale-index guard) and
-prints PASS/FAIL per check. It writes to nothing else. The server can't delete, so
-delete the scratch recipe in the Brewfather app afterwards; the script prints its
-name and id.
+prints PASS/FAIL per check. With `--inventory` it also creates one scratch hop with
+the same name and checks `update_inventory_item` (that a details edit merges rather
+than replaces the item) and `set_inventory` on it. It writes to nothing else. The
+server can't delete, so delete the scratch recipe (and hop) in the Brewfather app
+afterwards; the script prints their names and ids.
 
 Releases are automated: release-please keeps a release PR open from the
 conventional commits on `main`, and merging it tags `vX.Y.Z`, which triggers

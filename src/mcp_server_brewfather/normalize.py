@@ -40,11 +40,15 @@ _INVENTORY_FIELDS = (
     "unit",
     "type",
     "supplier",
+    "origin",
     "use",
     "alpha",
+    "color",
+    "potential",
     "attenuation",
     "laboratory",
     "productId",
+    "form",
 )
 _READING_FIELDS = ("sg", "temp", "angle", "battery", "type", "id")
 

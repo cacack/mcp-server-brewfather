@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 
 import anyio
@@ -16,7 +17,7 @@ import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_server_brewfather import server
-from mcp_server_brewfather.normalize import compact_brewtracker
+from mcp_server_brewfather.normalize import INVENTORY_KINDS, compact_brewtracker
 
 # 2026-09-01T12:00:00Z in epoch ms, as Brewfather stores timestamps.
 _SEP1 = 1788264000000
@@ -405,6 +406,15 @@ def test_list_inventory_in_stock_filter(fake_api):
     assert api.requests[0].url.params["inventory_exists"] == "true"
 
 
+def test_list_inventory_requests_complete_items(fake_api):
+    # Without complete=true the list omits fields update_inventory_item edits (origin, …).
+    api = fake_api({("GET", "inventory/hops"): [[]]})
+    server.list_inventory("hops")
+    params = api.requests[0].url.params
+    assert params["complete"] == "true"
+    assert "inventory_exists" not in params
+
+
 def test_list_inventory_rejects_unknown_kind(fake_api):
     with pytest.raises(ToolError, match="unknown inventory kind"):
         server.list_inventory("grains")
@@ -430,6 +440,124 @@ def test_set_inventory_requires_exactly_one(fake_api, kwargs):
     assert api.requests == []
 
 
+def test_inventory_fields_cover_every_kind():
+    assert tuple(server.INVENTORY_FIELDS) == INVENTORY_KINDS
+
+
+_ITEM_FIELDS = {
+    "fermentables": {"color": 6, "potential": 1.037},
+    "hops": {"alpha": 12.5},
+    "miscs": {"unit": "g", "use": "Boil"},
+    "yeasts": {"attenuation": 81, "laboratory": "Fermentis", "productId": "US-05", "form": "Dry"},
+}
+
+
+@pytest.mark.parametrize("kind", list(_ITEM_FIELDS))
+def test_create_inventory_item_posts_each_kind(fake_api, kind):
+    api = fake_api({("POST", f"inventory/{kind}"): {"id": "new1"}})
+    fields = {"supplier": "Acme", **_ITEM_FIELDS[kind]}
+    out = server.create_inventory_item(kind, " New item ", fields=fields)
+    assert out == {"item_id": "new1"}
+    assert [r.url.path for r in api.requests] == [f"/v2/inventory/{kind}"]
+    assert api.bodies("POST") == [{**fields, "name": "New item"}]
+
+
+def test_create_inventory_item_sets_starting_stock(fake_api):
+    api = fake_api({("POST", "inventory/hops"): {"id": "new1"}})
+    server.create_inventory_item("hops", "Citra", fields={"alpha": 12}, amount=100)
+    assert api.bodies("POST") == [{"alpha": 12, "name": "Citra", "inventory": 100}]
+
+
+@pytest.mark.parametrize("kind", list(_ITEM_FIELDS))
+def test_update_inventory_item_patches_only_given_fields(fake_api, kind):
+    api = fake_api({("PATCH", f"inventory/{kind}/i1"): "Updated"})
+    fields = {"name": "Renamed", "supplier": "Acme", **_ITEM_FIELDS[kind]}
+    out = server.update_inventory_item(kind, "i1", fields=fields)
+    assert out == {"item_id": "i1", "result": "Updated"}
+    assert api.bodies() == [fields]
+
+
+def _doc_fields(text: str) -> set[str]:
+    """Field names from a docstring list like 'color (SRM), potential (SG, e.g. 1.037);'."""
+    text = re.sub(r"\([^)]*\)", "", text)
+    return {f.strip(" ;.") for f in text.split(",") if f.strip(" ;.")}
+
+
+@pytest.mark.parametrize(
+    "tool, common",
+    [
+        (server.create_inventory_item, {"type", "supplier", "origin"}),  # name is its own arg
+        (server.update_inventory_item, {"name", "type", "supplier", "origin"}),
+    ],
+)
+def test_inventory_tool_docs_match_the_allowlist(tool, common):
+    # The docstrings hand-list INVENTORY_FIELDS for the model; fail if they drift apart.
+    lines = [line.strip() for line in tool.__doc__.splitlines()]
+    all_kinds = next(line for line in lines if "all kinds:" in line)
+    assert _doc_fields(all_kinds.split("all kinds:")[1].split(";")[0]) == common
+    shared = {"name", "type", "supplier", "origin"}
+    for kind, allowed in server.INVENTORY_FIELDS.items():
+        line = next(line for line in lines if line.startswith(f"- {kind}:"))
+        assert _doc_fields(line.split(":", 1)[1]) == set(allowed) - shared, kind
+
+
+@pytest.mark.parametrize(
+    "path, call",
+    [
+        ("recipes", lambda: server.create_recipe("Pale")),
+        ("inventory/hops", lambda: server.create_inventory_item("hops", "Citra")),
+    ],
+)
+def test_create_without_returned_id_is_a_tool_error(fake_api, path, call):
+    # A bare KeyError would reach the model as mcp's generic "Error executing tool".
+    fake_api({("POST", path): {}})
+    with pytest.raises(ToolError, match="did not return the new id"):
+        call()
+
+
+@pytest.mark.parametrize(
+    "call, match",
+    [
+        (lambda: server.create_inventory_item("hops", "  "), "needs a name"),
+        (lambda: server.create_inventory_item("grains", "Pale"), "unknown inventory kind"),
+        (
+            lambda: server.create_inventory_item("hops", "Citra", fields={"ibu": 40}),
+            "unknown hops field",
+        ),
+        (
+            lambda: server.create_inventory_item("yeasts", "US-05", fields={"alpha": 5}),
+            "unknown yeasts field",
+        ),
+        (
+            lambda: server.create_inventory_item("hops", "Citra", fields={"inventory": 5}),
+            "unknown hops field",
+        ),
+        (lambda: server.update_inventory_item("grains", "i1", {"name": "x"}), "unknown inventory"),
+        (lambda: server.update_inventory_item("hops", "i1", {}), "nothing to update"),
+        (lambda: server.update_inventory_item("hops", "i1", {"ibu": 5}), "unknown hops field"),
+        (
+            lambda: server.update_inventory_item("yeasts", "i1", {"alpha": 5}),
+            "unknown yeasts field",
+        ),
+        (lambda: server.update_inventory_item("hops", "i1", {"inventory": 5}), "set_inventory"),
+        (
+            lambda: server.update_inventory_item("hops", "i1", {"inventory_adjust": -5}),
+            "set_inventory",
+        ),
+        (
+            lambda: server.create_inventory_item("hops", "Citra", fields={"name": "Mosaic"}),
+            "not in fields",
+        ),
+        (lambda: server.update_inventory_item("hops", "i1", {"name": "  "}), "needs a name"),
+    ],
+)
+def test_inventory_item_tools_validate_before_sending(fake_api, call, match):
+    api = fake_api({})
+    with pytest.raises(ToolError, match=match):
+        call()
+    assert api.requests == []
+
+
 _ID_CALLS = {
     "get_batch": lambda i: server.get_batch(i),
     "get_readings": lambda i: server.get_readings(i),
@@ -438,6 +566,7 @@ _ID_CALLS = {
     "get_recipe": lambda i: server.get_recipe(i),
     "update_recipe": lambda i: server.update_recipe(i, fields={"name": "x"}),
     "set_inventory": lambda i: server.set_inventory("hops", i, adjust=1),
+    "update_inventory_item": lambda i: server.update_inventory_item("hops", i, fields={"alpha": 5}),
 }
 
 
