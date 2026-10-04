@@ -12,7 +12,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run pytest                             # unit tests; acceptance auto-skipped
 uv run pytest tests/unit/test_server.py::test_find_batches_rejects_unknown_status
 uv run pytest --run-acceptance            # live read-only API checks; needs BREWFATHER_USER_ID/API_KEY
-uv run python scripts/live_check_writes.py  # manual live recipe-write check; creates one scratch recipe
+uv run python scripts/live_check_writes.py [--inventory]  # manual live write check; creates one scratch recipe (+ one hop)
 ```
 
 ## Architecture
@@ -31,6 +31,7 @@ Tools must call `client.get_client()` through the module (not `from .client impo
 - The recipe API accepts any field silently and never computes recipe stats (the app does). Writes go through field allowlists in `server.py`; never make stats writable.
 - Batch PATCH ignores undocumented fields and answers `Nothing to update`; batch notes and the log (`batchNotes`, `notes`) can't be written. Don't retry (#25).
 - Recipe ingredient lists are replaced wholesale on PATCH — send full raw items, never the compact projection.
+- Inventory PATCH merges details (unsent fields kept); a body of only `inventory`/`inventory_adjust` is stock-only. List endpoints omit fields like `origin` unless `complete=true` (#12).
 - Keep dependencies to `mcp` and `httpx`.
 - Raise `ToolError` (or `BrewfatherError`, a subclass) for anything the model should read: mcp 2 replaces any other exception's message with a generic "Error executing tool".
 - API is metric-only (SG, L, kg/g, °C).

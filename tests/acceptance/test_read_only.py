@@ -85,9 +85,22 @@ def test_brewtracker_projects_or_reports_none():
         assert 0 <= tracker["stage_remaining"] <= tracker["stage_duration"]
 
 
+# A detail field per kind that only comes back with complete=true, confirming the
+# projection's live key names (origin, color, potential, form, …).
+_INVENTORY_DETAIL = {
+    "fermentables": "potential",
+    "hops": "origin",
+    "miscs": "unit",
+    "yeasts": "form",
+}
+
+
 @pytest.mark.parametrize("kind", INVENTORY_KINDS)
 def test_inventory_lists(kind):
     items = server.list_inventory(kind)
     assert all("id" in i and "name" in i for i in items)
+    if items:
+        detail = _INVENTORY_DETAIL[kind]
+        assert any(detail in i for i in items), f"no {detail!r} on any live {kind} item"
     for i in items:
         server._check_id(i["id"], "item_id")  # live ids pass the path allowlist

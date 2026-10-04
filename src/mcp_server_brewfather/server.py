@@ -1,9 +1,10 @@
 """MCP server exposing Brewfather batches, recipes, readings, and inventory.
 
-Eleven tools: find_batches, get_batch, get_readings, get_brewtracker, update_batch,
+Thirteen tools: find_batches, get_batch, get_readings, get_brewtracker, update_batch,
 find_recipes, get_recipe, create_recipe, update_recipe, list_inventory,
-set_inventory. Writes are limited to batch status/measurements, recipe creation and
-settings/ingredients, and inventory stock.
+set_inventory, create_inventory_item, update_inventory_item. Writes are limited to
+batch status/measurements, recipe creation and settings/ingredients, inventory
+stock, and inventory item creation and details.
 Nothing here deletes or writes computed recipe stats. Ids are checked against an
 allowlist before they go into a request path, so none can reach another endpoint.
 
@@ -55,6 +56,18 @@ BATCH_MEASUREMENTS = (
 # deliberately absent: the Brewfather app computes them from the ingredients, and
 # the API stores whatever it is sent without checking.
 RECIPE_FIELDS = ("name", "author", "notes", "batchSize", "boilSize", "boilTime", "efficiency")
+
+# Item details create_inventory_item/update_inventory_item may write, per kind. Stock
+# (inventory, inventory_adjust) is absent: set_inventory owns it. The API silently
+# accepts unknown keys, so this allowlist is the only guard.
+_INVENTORY_COMMON = ("name", "type", "supplier", "origin")
+INVENTORY_FIELDS: dict[str, tuple[str, ...]] = {
+    "fermentables": (*_INVENTORY_COMMON, "color", "potential"),
+    "hops": (*_INVENTORY_COMMON, "alpha"),
+    "miscs": (*_INVENTORY_COMMON, "unit", "use"),
+    "yeasts": (*_INVENTORY_COMMON, "attenuation", "laboratory", "productId", "form"),
+}
+_STOCK_FIELDS = ("inventory", "inventory_adjust")
 
 # Recipe types seen on live recipes. The API accepts any string, even none.
 RECIPE_TYPES = ("All Grain", "Extract")
@@ -368,7 +381,11 @@ def list_inventory(kind: str, name: str = "", in_stock_only: bool = False) -> li
     are in Brewfather's stored metric units.
     """
     _check_kind(kind)
-    params = {"inventory_exists": "true"} if in_stock_only else {}
+    # The list's default fields omit origin, color, potential and form, which
+    # update_inventory_item can change; complete=true returns them.
+    params = {"complete": "true"}
+    if in_stock_only:
+        params["inventory_exists"] = "true"
     needle = name.strip().lower()
     items = client.get_client().paginate(f"inventory/{kind}", params)
     return [compact_inventory(i) for i in items if _matches(i, needle)]
@@ -390,6 +407,68 @@ def set_inventory(
         raise ToolError("pass exactly one of amount or adjust")
     body = {"inventory": amount} if amount is not None else {"inventory_adjust": adjust}
     result = client.get_client().patch(f"inventory/{kind}/{item_id}", body)
+    return {"item_id": item_id, "result": result}
+
+
+@mcp.tool()
+def create_inventory_item(
+    kind: str,
+    name: str,
+    fields: dict[str, str | float] | None = None,
+    amount: float | None = None,
+) -> dict:
+    """Add a new item to the inventory.
+
+    ``kind`` is fermentables, hops, miscs, or yeasts. ``amount`` is the starting
+    stock in Brewfather's stored metric units (kg for fermentables, g for hops).
+    ``fields`` keys, all kinds: type, supplier, origin (the name goes in ``name``); plus
+    - fermentables: color (SRM), potential (SG, e.g. 1.037);
+    - hops: alpha (percent);
+    - miscs: unit, use;
+    - yeasts: attenuation (percent), laboratory, productId, form.
+
+    Returns {item_id}.
+    """
+    _check_kind(kind)
+    if not name.strip():
+        raise ToolError("an inventory item needs a name")
+    fields = fields or {}
+    if "name" in fields:
+        raise ToolError("pass the item's name as name, not in fields")
+    _check_fields(fields, INVENTORY_FIELDS[kind], f"{kind} field")
+    body: dict = {**fields, "name": name.strip()}
+    if amount is not None:
+        body["inventory"] = amount
+    result = client.get_client().post(f"inventory/{kind}", body)
+    return {"item_id": result["id"]}
+
+
+@mcp.tool()
+def update_inventory_item(kind: str, item_id: str, fields: dict[str, str | float]) -> dict:
+    """Edit an inventory item's details (not its stock — use set_inventory).
+
+    ``kind`` is fermentables, hops, miscs, or yeasts. Only the given ``fields``
+    are written. Keys, all kinds: name, type, supplier, origin; plus
+    - fermentables: color (SRM), potential (SG, e.g. 1.037);
+    - hops: alpha (percent);
+    - miscs: unit, use;
+    - yeasts: attenuation (percent), laboratory, productId, form.
+
+    Returns {item_id, result}.
+    """
+    _check_kind(kind)
+    _check_id(item_id, "item_id")
+    if not fields:
+        raise ToolError("nothing to update: pass fields")
+    for key in _STOCK_FIELDS:
+        if key in fields:
+            raise ToolError(f"{key!r} is stock: use set_inventory to change it")
+    _check_fields(fields, INVENTORY_FIELDS[kind], f"{kind} field")
+    if "name" in fields:
+        if not str(fields["name"]).strip():
+            raise ToolError("an inventory item needs a name")
+        fields = {**fields, "name": str(fields["name"]).strip()}
+    result = client.get_client().patch(f"inventory/{kind}/{item_id}", fields)
     return {"item_id": item_id, "result": result}
 
 
