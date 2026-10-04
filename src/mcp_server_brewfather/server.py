@@ -120,6 +120,13 @@ def _check_fields(obj: dict, allowed: tuple[str, ...], what: str) -> None:
             raise ToolError(f"unknown {what}: {key!r} (use {', '.join(allowed)})")
 
 
+def _created_id(result: object) -> str:
+    """The id from a create (POST) response, or a ToolError the model can read."""
+    if not isinstance(result, dict) or not result.get("id"):
+        raise ToolError(f"Brewfather did not return the new id: {result!r}")
+    return result["id"]
+
+
 def _apply_ingredient_changes(recipe: dict, changes: list[dict]) -> dict[str, list[dict]]:
     """Return the full new ingredient list for each kind that ``changes`` touches.
 
@@ -329,7 +336,7 @@ def create_recipe(
     body: dict = {**fields, "name": name.strip(), "type": type}
     body.update(_apply_ingredient_changes({}, ingredients or []))
     result = client.get_client().post("recipes", body)
-    return {"recipe_id": result["id"], "note": _STALE_STATS}
+    return {"recipe_id": _created_id(result), "note": _STALE_STATS}
 
 
 @mcp.tool()
@@ -440,7 +447,7 @@ def create_inventory_item(
     if amount is not None:
         body["inventory"] = amount
     result = client.get_client().post(f"inventory/{kind}", body)
-    return {"item_id": result["id"]}
+    return {"item_id": _created_id(result)}
 
 
 @mcp.tool()

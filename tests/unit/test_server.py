@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 
 import anyio
@@ -474,6 +475,44 @@ def test_update_inventory_item_patches_only_given_fields(fake_api, kind):
     out = server.update_inventory_item(kind, "i1", fields=fields)
     assert out == {"item_id": "i1", "result": "Updated"}
     assert api.bodies() == [fields]
+
+
+def _doc_fields(text: str) -> set[str]:
+    """Field names from a docstring list like 'color (SRM), potential (SG, e.g. 1.037);'."""
+    text = re.sub(r"\([^)]*\)", "", text)
+    return {f.strip(" ;.") for f in text.split(",") if f.strip(" ;.")}
+
+
+@pytest.mark.parametrize(
+    "tool, common",
+    [
+        (server.create_inventory_item, {"type", "supplier", "origin"}),  # name is its own arg
+        (server.update_inventory_item, {"name", "type", "supplier", "origin"}),
+    ],
+)
+def test_inventory_tool_docs_match_the_allowlist(tool, common):
+    # The docstrings hand-list INVENTORY_FIELDS for the model; fail if they drift apart.
+    lines = [line.strip() for line in tool.__doc__.splitlines()]
+    all_kinds = next(line for line in lines if "all kinds:" in line)
+    assert _doc_fields(all_kinds.split("all kinds:")[1].split(";")[0]) == common
+    shared = {"name", "type", "supplier", "origin"}
+    for kind, allowed in server.INVENTORY_FIELDS.items():
+        line = next(line for line in lines if line.startswith(f"- {kind}:"))
+        assert _doc_fields(line.split(":", 1)[1]) == set(allowed) - shared, kind
+
+
+@pytest.mark.parametrize(
+    "path, call",
+    [
+        ("recipes", lambda: server.create_recipe("Pale")),
+        ("inventory/hops", lambda: server.create_inventory_item("hops", "Citra")),
+    ],
+)
+def test_create_without_returned_id_is_a_tool_error(fake_api, path, call):
+    # A bare KeyError would reach the model as mcp's generic "Error executing tool".
+    fake_api({("POST", path): {}})
+    with pytest.raises(ToolError, match="did not return the new id"):
+        call()
 
 
 @pytest.mark.parametrize(
