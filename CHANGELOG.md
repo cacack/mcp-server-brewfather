@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/cacack/mcp-server-brewfather/compare/v0.2.0...v0.3.0) (2026-10-04)
+
+
+### Features
+
+* create inventory items and edit their details ([c6a5a86](https://github.com/cacack/mcp-server-brewfather/commit/c6a5a861a28e19de88f82b1da185b41ef0e36e68)), closes [#12](https://github.com/cacack/mcp-server-brewfather/issues/12)
+* return structured content from single-object tools ([dca20c7](https://github.com/cacack/mcp-server-brewfather/commit/dca20c7871bf7627c0bfcc27c6dc315e55c7c242)), closes [#13](https://github.com/cacack/mcp-server-brewfather/issues/13)
+
+
+### Bug Fixes
+
+* report a create response without an id as a readable error ([bb5957e](https://github.com/cacack/mcp-server-brewfather/commit/bb5957e53300f79f389938c25f2f34673127c0fa)), closes [#12](https://github.com/cacack/mcp-server-brewfather/issues/12)
+
 ## [0.2.0](https://github.com/cacack/mcp-server-brewfather/compare/v0.1.1...v0.2.0) (2026-10-03)
 
 
